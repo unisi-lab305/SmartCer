@@ -1,5 +1,3 @@
-from typing import Tuple
-
 from energy_models import Battery
 
 import pandas as pd
@@ -11,41 +9,41 @@ import os
 
 class Node:
     """
-    Classe base per rappresentare un nodo energetico.
+    Base class to represent an energy node.
 
-    Gestisce il caricamento dei dati da file CSV e fornisce metodi per accedere alle informazioni
-    relative al nodo, come l'energia importata, esportata e i coefficienti TIP.
+    Manages the loading of data from CSV files and provides methods to access information
+    related to the node, such as imported energy, exported energy, and TIP coefficients.
 
     Attributes:
-        data_path (str): Percorso al file CSV contenente i dati del nodo.
-        node_id (str): Identificativo univoco del nodo.
-        node_type (str): Tipo del nodo (es. 'Consumer', 'Producer', 'Prosumer').
-        storage (StorageSystem, optional): Sistema di accumulo associato al nodo.
-        time_step (int): Indice temporale corrente.
-        data (pd.DataFrame): Dati del nodo in formato DataFrame.
-        date_time (np.array): Array dei timestamp estratti dai dati.
-        imported_energies (list): Lista delle energie importate.
-        exported_energies (list): Lista delle energie esportate.
-        energy_expense (list): Costi energetici.
-        energy_revenue (list): Ricavi energetici.
-        tip_coefficients (list): Coefficienti TIP.
-        tip_contributions_prod (list): Contributi TIP per la produzione.
-        tip_contributions_cons (list): Contributi TIP per il consumo.
-        potential_tips_prod (list): Potenziali TIP per la produzione.
-        potential_tips_cons (list): Potenziali TIP per il consumo.
-        actual_tips_prod (list): TIP effettivi per la produzione.
-        actual_tips_cons (list): TIP effettivi per il consumo.
+        data_path (str): Path to the CSV file containing node data.
+        node_id (str): Unique identifier of the node.
+        node_type (str): Type of the node (e.g., 'Consumer', 'Producer', 'Prosumer').
+        storage (StorageSystem, optional): Associated storage system for the node.
+        time_step (int): Current time index.
+        data (pd.DataFrame): Node data in DataFrame format.
+        date_time (np.array): Array of timestamps extracted from the data.
+        imported_energies (list): List of imported energy values.
+        exported_energies (list): List of exported energy values.
+        energy_expense (list): Energy costs.
+        energy_revenue (list): Energy revenues.
+        tip_coefficients (list): TIP coefficients.
+        tip_contributions_prod (list): TIP contributions for production.
+        tip_contributions_cons (list): TIP contributions for consumption.
+        potential_tips_prod (list): Potential TIPs for production.
+        potential_tips_cons (list): Potential TIPs for consumption.
+        actual_tips_prod (list): Actual TIPs for production.
+        actual_tips_cons (list): Actual TIPs for consumption.
     """
 
     def __init__(self, data_dir: str, node_id: str, node_type: str, storage: Battery = None):
         """
-        Inizializza la classe Node con il percorso dei dati, l'ID del nodo e il tipo di nodo.
+        Initializes the Node class with data path, node ID, and node type.
 
         Args:
-            data_dir (str): Directory contenente i dati del nodo.
-            node_id (str): Identificativo del nodo.
-            node_type (str): Tipo del nodo.
-            storage (StorageSystem, optional): Sistema di accumulo associato al nodo.
+            data_dir (str): Directory containing node data.
+            node_id (str): Identifier of the node.
+            node_type (str): Type of the node.
+            storage (StorageSystem, optional): Associated storage system for the node.
         """
         self.data_path = os.path.join(data_dir, f'{self.extract_base_name(node_id)}.csv')
         self.node_id = node_id
@@ -73,20 +71,20 @@ class Node:
     @staticmethod
     def extract_base_name(name: str) -> str:
         """
-        Estrae il nome di base da un identificativo di nodo.
+        Extracts the base name from a node identifier.
 
         Args:
-            name (str): Identificativo del nodo.
+            name (str): Identifier of the node.
 
         Returns:
-            str: Nome di base del nodo.
+            str: Base name of the node.
         """
         match = re.match(pattern='^[a-zA-Z0-9_]+(?=_\d+)', string=name)
         return match.group(0) if match else name
 
     def load_data(self) -> None:
         """
-        Carica i dati dal file CSV nel DataFrame.
+        Loads data from the CSV file into the DataFrame.
 
         Returns:
             None
@@ -96,46 +94,46 @@ class Node:
 
     def get_data(self, column: str = None) -> pd.DataFrame:
         """
-        Restituisce i dati del nodo.
+        Returns the node's data.
 
         Args:
-            column (str, optional): Nome della colonna da restituire. Se None, restituisce l'intero DataFrame.
+            column (str, optional): Name of the column to return. If None, returns the entire DataFrame.
 
         Returns:
-            pd.DataFrame: Dati del nodo o colonna specificata.
+            pd.DataFrame: Node data or specified column.
         """
         return self.data if column is None else self.data[column]
 
     def get_data_columns(self) -> list:
         """
-        Restituisce l'elenco delle colonne disponibili nel DataFrame.
+        Returns the list of available columns in the DataFrame.
 
         Returns:
-            list: Nomi delle colonne.
+            list: Names of the columns.
         """
         return self.data.columns.tolist()
 
     def get_current_data(self, column: str = None) -> np.array or float:
         """
-        Restituisce i dati correnti per il time step attuale.
+        Returns the current data for the current time step.
 
         Args:
-            column (str, optional): Nome della colonna da restituire. Se None, restituisce l'intera riga.
+            column (str, optional): Name of the column to return. If None, returns the entire row.
 
         Returns:
-            np.array or float: Dati correnti o valore specificato.
+            numpy array or float: Current data or specified value.
         """
         return self.data.iloc[self.time_step].values if column is None else self.data[column][self.time_step]
 
     def set_storage(self, action: float) -> float:
         """
-        Imposta l'energia da caricare o scaricare dallo storage.
+        Sets the energy to be charged or discharged from storage.
 
         Args:
-            action (float): azione di controllo per la carica o scarica dello storage ∈ [-1,1]
+            action (float): Control action for charging or discharging storage ∈ [-1,1].
 
         Returns:
-            float: violazione dei vincoli normalizzata.
+            float: Normalized violation of the constraints.
         """
         energy = action * self.storage.capacity
 
@@ -150,9 +148,9 @@ class Node:
                   f'Action: {action:.2f}')
             sys.exit(1)
 
-    def reset(self):
+    def reset(self) -> None:
         """
-        Resetta lo stato del nodo, riportando il time step e i dati allo stato iniziale.
+        Resets the node state, restoring the time step and data to their initial state.
 
         Returns:
             None
@@ -180,24 +178,24 @@ class Node:
 
 class Consumer(Node):
     """
-    Classe per rappresentare un nodo consumatore.
+    Class to represent a consumer node.
 
-    Estende la classe Node, aggiungendo specifiche relative ai consumi e ai prezzi di acquisto.
+    Extends the Node class, adding specifics related to consumption and purchase prices.
 
     Attributes:
-        consumption (np.array): Consumo energetico del nodo.
-        price_imp (np.array): Prezzi di acquisto dell'energia.
+        consumption (np.array): Energy consumption of the node.
+        price_imp (np.array): Purchase prices of energy.
     """
 
     def __init__(self, data_dir: str, node_id: str, node_type: str, storage: Battery = None):
         """
-        Inizializza la classe Consumer ereditando da Node.
+        Initializes the Consumer class by inheriting from Node.
 
         Args:
-            data_dir (str): Directory contenente i dati del nodo.
-            node_id (str): Identificativo del nodo.
-            node_type (str): Tipo del nodo.
-            storage (StorageSystem, optional): Sistema di accumulo associato al nodo.
+            data_dir (str): Directory containing the node's data.
+            node_id (str): Unique identifier of the node.
+            node_type (str): Type of the node.
+            storage (StorageSystem, optional): Associated storage system with the node.
         """
         super().__init__(data_dir, node_id, node_type, storage)
 
@@ -207,31 +205,31 @@ class Consumer(Node):
 
 class Producer(Node):
     """
-    Classe per rappresentare un nodo produttore.
+    Class to represent a producer node.
 
-    Estende la classe Node, aggiungendo specifiche relative alla produzione e ai prezzi di vendita.
+    Extends the Node class, adding specifics related to production and selling prices.
 
     Attributes:
-        pv_power (float): Potenza dell'impianto fotovoltaico.
-        pnrr (float): Percentuale di finanziamento.
-        tip_base (float): Valore base del TIP.
-        tip_th (float): Soglia del TIP.
-        fi_zone (str): Fattore di correzione zonale.
-        pz (str): Zona di prezzo.
-        production (np.array): Produzione energetica del nodo.
-        price_exp (np.array): Prezzi di vendita dell'energia.
+        pv_power (float): Power of the photovoltaic system.
+        pnrr (float): Percentage of funding.
+        tip_base (float): Base value of the TIP.
+        tip_th (float): Threshold of the TIP.
+        fi_zone (str): Zone correction factor.
+        pz (str): Price zone.
+        production (np.array): Energy production of the node.
+        price_exp (np.array): Selling prices of energy.
     """
 
     def __init__(self, data_dir: str, node_id: str, node_type: str, storage: Battery = None, **pv_args):
         """
-        Inizializza la classe Producer ereditando da Node.
+        Initializes the Producer class by inheriting from Node.
 
         Args:
-            data_dir (str): Directory contenente i dati del nodo.
-            node_id (str): Identificativo del nodo.
-            node_type (str): Tipo del nodo.
-            storage (StorageSystem, optional): Sistema di accumulo associato al nodo.
-            **pv_args: Argomenti aggiuntivi relativi all'impianto fotovoltaico.
+            data_dir (str): Directory containing the node's data.
+            node_id (str): Unique identifier of the node.
+            node_type (str): Type of the node.
+            storage (StorageSystem, optional): Associated storage system with the node.
+            **pv_args: Additional arguments related to the photovoltaic system.
         """
         super().__init__(data_dir, node_id, node_type, storage)
         self.pv_power = pv_args['pv_power']
@@ -247,33 +245,33 @@ class Producer(Node):
 
 class Prosumer(Node):
     """
-    Classe per rappresentare un nodo prosumer.
+    Class to represent a prosumer node.
 
-    Estende la classe Node, aggiungendo specifiche relative sia alla produzione che al consumo.
+    Extends the Node class, adding specifics related to both production and consumption.
 
     Attributes:
-        pv_power (float): Potenza dell'impianto fotovoltaico.
-        pnrr (float): Percentuale di finanziamento.
-        tip_base (float): Valore base del TIP.
-        tip_th (float): Soglia del TIP.
-        fi_zone (str): Fattore di correzione zonale.
-        pz (str): Zona di prezzo.
-        production (np.array): Produzione energetica del nodo.
-        consumption (np.array): Consumo energetico del nodo.
-        price_exp (np.array): Prezzi di vendita dell'energia.
-        price_imp (np.array): Prezzi di acquisto dell'energia.
+        pv_power (float): Power of the photovoltaic system.
+        pnrr (float): Percentage of funding.
+        tip_base (float): Base value of the TIP.
+        tip_th (float): Threshold of the TIP.
+        fi_zone (str): Zone correction factor.
+        pz (str): Price zone.
+        production (np.array): Energy production of the node.
+        consumption (np.array): Energy consumption of the node.
+        price_exp (np.array): Selling prices of energy.
+        price_imp (np.array): Purchasing prices of energy.
     """
 
     def __init__(self, data_dir: str, node_id: str, node_type: str, storage: Battery = None, **pv_args):
         """
-        Inizializza la classe Prosumer ereditando da Node.
+        Initializes the Prosumer class by inheriting from Node.
 
         Args:
-            data_dir (str): Directory contenente i dati del nodo.
-            node_id (str): Identificativo del nodo.
-            node_type (str): Tipo del nodo.
-            storage (StorageSystem, optional): Sistema di accumulo associato al nodo.
-            **pv_args: Argomenti aggiuntivi relativi all'impianto fotovoltaico.
+            data_dir (str): Directory containing the node's data.
+            node_id (str): Unique identifier of the node.
+            node_type (str): Type of the node.
+            storage (StorageSystem, optional): Associated storage system with the node.
+            **pv_args: Additional arguments related to the photovoltaic system.
         """
         super().__init__(data_dir, node_id, node_type, storage)
         self.pv_power = pv_args['pv_power']

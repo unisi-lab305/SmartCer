@@ -1,110 +1,81 @@
-import sys
-
 from cer_utils import *
 
-import numpy as np
 import os
 
 
 class Cer:
     """
-    Classe per la simulazione di una Comunità Energetica Rinnovabile (CER).
+    Class for the simulation of a Renewable Energy Community (CER).
 
-    Attributi:
-        cer_path (str): Il percorso della directory contenente i dati della CER.
-        max_pnrr (float): Il valore massimo del PNRR.
-        pnrr_thresholds (tuple): Soglie del PNRR per la classificazione.
-        max_tip_retail (float): Il valore massimo del TIP per i consumatori retail.
-        producers (dict): Dizionario dei produttori di energia.
-        consumers (dict): Dizionario dei consumatori di energia.
-        prosumers (dict): Dizionario dei prosumer (produzione e consumo).
-        nodes (dict): Dizionario di tutti i nodi della CER.
-        factories_ids (list): Lista degli ID dei nodi di tipo 'factory'.
-        producers_ids (list): Lista degli ID dei produttori.
-        consumers_ids (list): Lista degli ID dei consumatori.
-        prosumers_ids (list): Lista degli ID dei prosumer.
-        nodes_ids (list): Lista degli ID di tutti i nodi.
-        tip_table_path (str): Percorso del file JSON contenente la tabella TIP.
-        time_step (int): Indice dell'attuale intervallo temporale della simulazione.
-        cer_exported_energies (list): Lista delle energie esportate dalla CER.
-        cer_imported_energies (list): Lista delle energie importate dalla CER.
-        cer_energy_expense (list): Lista delle spese energetiche della CER.
-        cer_energy_revenue (list): Lista dei ricavi energetici della CER.
-        cer_energy_selfcons (list): Lista dell'autoconsumo energetico della CER.
-        cer_energy_selfcons_percentages (list): Percentuali di autoconsumo della CER.
-        cer_potential_tips (list): Lista dei TIP potenziali.
-        cer_actual_tips (list): Lista dei TIP attuali.
-        cer_tip_distributions (list): Lista delle distribuzioni TIP.
-        sim_results (dict): Risultati della simulazione.
+    Attributes:
+        cer_path (str): The path to the directory containing the CER data.
+        producers (dict): Dictionary of energy producers.
+        consumers (dict): Dictionary of energy consumers.
+        prosumers (dict): Dictionary of prosumers (production and consumption).
+        nodes (dict): Dictionary of all CER nodes.
+        producers_ids (list): List of IDs of producers.
+        consumers_ids (list): List of IDs of consumers.
+        prosumers_ids (list): List of IDs of prosumers.
+        nodes_ids (list): List of IDs of all nodes.
+        time_step (int): Index of the current time step of the simulation.
+        cer_exported_energy (list): List of energies exported by the CER.
+        cer_imported_energy (list): List of energies imported by the CER.
+        cer_energy_expense (list): List of energy expenses of the CER.
+        cer_energy_revenue (list): List of energy revenues of the CER.
+        cer_energy_selfcons (list): List of CER self-consumed energy.
+        cer_energy_selfcons_percentage (list): Percentages of CER self-consumption.
+        cer_potential_tip (list): List of potential TIPs.
+        cer_actual_tip (list): List of actual TIPs.
     """
 
-    def __init__(self, cer_path: str,
-                 max_pnrr: float = 40., pnrr_thresholds: tuple = (45., 55.), max_tip_retail: float = 0.04):
+    def __init__(self, cer_path: str):
         """
-        Inizializza un'istanza della classe Cer.
+        Initializes an instance of the Cer class.
 
         Args:
-            cer_path (str): Il percorso della directory contenente i dati della CER.
-            max_pnrr (float, optional): Il valore massimo del PNRR. Default è 40.
-            pnrr_thresholds (tuple, optional): Soglie del PNRR per la classificazione. Default è (45., 55.).
-            max_tip_retail (float, optional): Il valore massimo del TIP per i consumatori retail. Default è 0.04.
+            cer_path (str): The path to the directory containing the CER data.
         """
         self.cer_path = cer_path
-        self.producers, self.consumers, self.prosumers, self.controller = node_loader(cer_path)
-        self.nodes = {**self.producers, **self.consumers, **self.prosumers}
-        self.factories_ids = [
-            node.node_id
-            for node in list(self.prosumers.values()) + list(self.consumers.values()) + list(self.producers.values())
-            if node.node_type == 'factory'
-        ]
+        self.producers, self.consumers, self.prosumers = node_loader(cer_path)
         self.producers_ids = list(self.producers.keys())
         self.consumers_ids = list(self.consumers.keys())
         self.prosumers_ids = list(self.prosumers.keys())
+        self.nodes = {**self.producers, **self.consumers, **self.prosumers}
         self.nodes_ids = list(self.nodes.keys())
-        self.tip_table_path = os.path.join(cer_path, 'tip_table.json')
-        self.max_pnrr = max_pnrr
-        self.pnrr_thresholds = pnrr_thresholds
-        self.max_tip_retail = max_tip_retail
 
         self.time_step = 0
 
-        self.cer_exported_energies = []
-        self.cer_imported_energies = []
+        self.cer_exported_energy = []
+        self.cer_imported_energy = []
         self.cer_energy_expense = []
         self.cer_energy_revenue = []
         self.cer_energy_selfcons = []
-        self.cer_energy_selfcons_percentages = []
-        self.cer_potential_tips = []
-        self.cer_actual_tips = []
-        self.cer_tip_distributions = []
-        self.sim_results = {}
+        self.cer_energy_selfcons_percentage = []
+        self.cer_potential_tip = []
+        self.cer_actual_tip = []
 
-    # TODO: optimize step method
     def step(self, actions: Dict[str, float]) -> None:
         """
-        Esegue un passo della simulazione, calcolando il TIP potenziale e attuale per produttori, consumatori e
-        prosumer.
-        Aggiorna le energie esportate e importate, l'autoconsumo e le distribuzioni TIP.
+        Performs a simulation step, calculating the potential and actual TIP for producers, consumers, and prosumers.
+        Updates exported and imported energies, self-consumption, and TIP distributions.
 
         Args:
-            actions (list): Lista delle azioni di carica e scarica da eseguire per ogni nodo.
+            actions (list): List of charge and discharge actions to perform for each node.
         """
-        # applica azioni di carica e scarica
+        # apply charge and discharge actions
         if actions:
             for node_id, action in actions.items():
                 _ = self.nodes[node_id].set_storage(action)
 
-        # calcolo del TIP potenziale
+        # TODO: create function and apply to all nodes
+        # compute potential and actual TIP for each node
         for producer in self.producers.values():
-            # calcolo energia importata ed esportata
+            # imported and exported energies
             energy_produced = producer.get_current_data('production')
             energy_consumed = 0.
-            if self.controller:
-                if producer.storage:
-                    energy_trade = (energy_produced + producer.storage.actual_discharges[self.time_step] -
-                                    energy_consumed - producer.storage.actual_charges[self.time_step])
-                else:
-                    energy_trade = energy_produced - energy_consumed
+            if producer.storage:
+                energy_trade = (energy_produced + producer.storage.actual_discharges[self.time_step] -
+                                energy_consumed - producer.storage.actual_charges[self.time_step])
             else:
                 energy_trade = energy_produced - energy_consumed
             if energy_trade > 0:
@@ -113,11 +84,12 @@ class Cer:
             else:
                 energy_exported = 0.
                 energy_imported = -energy_trade
-            assert energy_imported >= 0, (f'Violazione vincolo arbitraggio energetico -> '
-                                          f'{producer.node_id} ha importato {energy_imported:.2f} kWh')
+            assert energy_imported >= 0, (f'Energy arbitrage constraint violation -> '
+                                          f'{producer.node_id} imported {energy_imported:.2f} kWh')
 
-            # calcolo tip produttori
+            # TIP producers
             producer.exported_energies.append(energy_exported)
+            # TODO: move to node_loader
             # TIP coefficient
             coefficient_tip = get_tip_coefficient(
                 tip_th=producer.tip_th,
@@ -131,7 +103,7 @@ class Cer:
             potential_tip = coefficient_tip * producer.exported_energies[self.time_step]
             producer.potential_tips_prod.append(potential_tip)
 
-            # calcolo costi energia
+            # energy costs
             energy_revenue = producer.get_current_data('price_exp') * energy_exported
             energy_expense = 0.
             producer.energy_revenue.append(energy_revenue)
@@ -148,15 +120,12 @@ class Cer:
             consumer.energy_expense.append(energy_expense)
 
         for prosumer in self.prosumers.values():
-            # calcolo energia importata ed esportata
+            # imported and exported energies
             energy_produced = prosumer.get_current_data('production')
             energy_consumed = prosumer.get_current_data('consumption')
-            if self.controller:
-                if prosumer.storage:
-                    energy_trade = (energy_produced + prosumer.storage.actual_discharges[self.time_step] -
-                                    energy_consumed - prosumer.storage.actual_charges[self.time_step])
-                else:
-                    energy_trade = energy_produced - energy_consumed
+            if prosumer.storage:
+                energy_trade = (energy_produced + prosumer.storage.actual_discharges[self.time_step] -
+                                energy_consumed - prosumer.storage.actual_charges[self.time_step])
             else:
                 energy_trade = energy_produced - energy_consumed
             if energy_trade > 0:
@@ -166,12 +135,13 @@ class Cer:
                 energy_exported = 0.
                 energy_imported = -energy_trade
 
-            assert energy_imported * energy_exported == 0, f'Energia importata ed esportata contemporaneamente -> ' \
-                f'importata: {energy_imported:.2f}, esportata: {energy_exported:.2f}'
+            assert energy_imported * energy_exported == 0, f'Simultaneous import-export -> ' \
+                f'imported: {energy_imported:.2f}, exported: {energy_exported:.2f}'
 
-            # calcolo tip prosumer
+            # TIP prosumers
             prosumer.exported_energies.append(energy_exported)
             prosumer.imported_energies.append(energy_imported)
+            # TODO: move to node_loader
             # TIP coefficient
             coefficient_tip = get_tip_coefficient(
                 tip_th=prosumer.tip_th,
@@ -185,323 +155,129 @@ class Cer:
             potential_tip = coefficient_tip * prosumer.exported_energies[self.time_step]
             prosumer.potential_tips_prod.append(potential_tip)
 
-            # calcolo costi energia
+            # energy costs
             energy_revenue = prosumer.get_current_data('price_exp') * energy_exported
             energy_expense = prosumer.get_current_data('price_imp') * energy_imported
             prosumer.energy_revenue.append(energy_revenue)
             prosumer.energy_expense.append(energy_expense)
 
-        # calcolo energia esportata e importata a livello di CER
-        self.cer_exported_energies.append(
-            sum([producer.exported_energies[self.time_step] for producer in self.producers.values()]) +
-            sum([prosumer.exported_energies[self.time_step] for prosumer in self.prosumers.values()]))
-        self.cer_imported_energies.append(
-            sum([consumer.imported_energies[self.time_step] for consumer in self.consumers.values()]) +
-            sum([prosumer.imported_energies[self.time_step] for prosumer in self.prosumers.values()]))
+        # CER imported and exported energy
+        self.cer_exported_energy.append(
+            sum([node.exported_energies[self.time_step] for node in {**self.producers, **self.prosumers}.values()]))
+        self.cer_imported_energy.append(
+            sum([node.imported_energies[self.time_step] for node in {**self.consumers, **self.prosumers}.values()]))
 
-        # calcolo spesa e ricavi energetici a livello di CER
-        self.cer_energy_expense.append(
-            sum([producer.energy_expense[self.time_step] for producer in self.producers.values()]) +
-            sum([consumer.energy_expense[self.time_step] for consumer in self.consumers.values()]) +
-            sum([prosumer.energy_expense[self.time_step] for prosumer in self.prosumers.values()]))
-        self.cer_energy_revenue.append(
-            sum([producer.energy_revenue[self.time_step] for producer in self.producers.values()]) +
-            sum([consumer.energy_revenue[self.time_step] for consumer in self.consumers.values()]) +
-            sum([prosumer.energy_revenue[self.time_step] for prosumer in self.prosumers.values()]))
+        # CER energy costs and revenues
+        self.cer_energy_expense.append(sum([node.energy_expense[self.time_step] for node in self.nodes.values()]))
+        self.cer_energy_revenue.append(sum([node.energy_revenue[self.time_step] for node in self.nodes.values()]))
 
-        # calcolo del TIP potenziale a livello di CER
-        self.cer_potential_tips.append(
-            sum([producer.potential_tips_prod[self.time_step] for producer in self.producers.values()]) +
-            sum([prosumer.potential_tips_prod[self.time_step] for prosumer in self.prosumers.values()]))
+        # CER potential TIP
+        self.cer_potential_tip.append(
+            sum([node.potential_tips_prod[self.time_step] for node in {**self.producers, **self.prosumers}.values()]))
 
-        # calcolo dell'autoconsumo energetico a livello di CER
+        # CER self-consumed energy
         self.cer_energy_selfcons.append(
-            min(self.cer_exported_energies[self.time_step], self.cer_imported_energies[self.time_step]))
+            min(self.cer_exported_energy[self.time_step], self.cer_imported_energy[self.time_step]))
         try:
-            self.cer_energy_selfcons_percentages.append(
-                self.cer_energy_selfcons[self.time_step] / self.cer_exported_energies[self.time_step])
+            self.cer_energy_selfcons_percentage.append(
+                self.cer_energy_selfcons[self.time_step] / self.cer_exported_energy[self.time_step])
         except ZeroDivisionError:
-            self.cer_energy_selfcons_percentages.append(0.)
+            self.cer_energy_selfcons_percentage.append(0.)
 
-        # calcolo del TIP attuale a livello di CER
-        self.cer_actual_tips.append(
-            self.cer_energy_selfcons_percentages[self.time_step] * self.cer_potential_tips[self.time_step])
-
-        # ridistribuzione TIP seconda tabella configurazione
-        try:
-            tip_percentages = get_tip_percentages(self.tip_table_path,
-                                                  self.cer_energy_selfcons_percentages[self.time_step])
-        except ValueError as e:
-            tip_percentages = None
-            print(e)
-
-        # calcolo scostamento
-        if self.cer_energy_selfcons_percentages[self.time_step] >= self.pnrr_thresholds[0] / 100.:
-            new_tip_percentages = self.compute_deviation(tip_percentages=tip_percentages)
-        else:
-            new_tip_percentages = tip_percentages
-
-        # distribuzione TIP reale [€]
-        tip_distribution = {key: self.cer_actual_tips[self.time_step] * value / 100.
-                            for key, value in new_tip_percentages.items()}
-        assert round(sum(tip_distribution.values()), 2) == round(self.cer_actual_tips[self.time_step], 2), \
-            (f'Somma TIP ({sum(tip_distribution.values())}) '
-             f'diversa da TIP attuale ({self.cer_actual_tips[self.time_step]})')
-
-        # calcolo TIP per ogni nodo [€]
-        self.compute_distribution(tip_distribution=tip_distribution)
+        # CER actual TIP
+        self.cer_actual_tip.append(
+            self.cer_energy_selfcons_percentage[self.time_step] * self.cer_potential_tip[self.time_step])
 
     def reset(self) -> None:
         """
-        Ripristina lo stato della simulazione per ricominciare dal primo intervallo temporale.
+        Reset the environment to the initial state, resetting all nodes.
         """
         self.time_step = 0
-        self.cer_exported_energies = []
-        self.cer_imported_energies = []
+        self.cer_exported_energy = []
+        self.cer_imported_energy = []
         self.cer_energy_expense = []
         self.cer_energy_revenue = []
         self.cer_energy_selfcons = []
-        self.cer_energy_selfcons_percentages = []
-        self.cer_potential_tips = []
-        self.cer_actual_tips = []
-        self.cer_tip_distributions = []
-        self.sim_results = {}
+        self.cer_energy_selfcons_percentage = []
+        self.cer_potential_tip = []
+        self.cer_actual_tip = []
         for node in self.nodes.values():
             node.reset()
 
-    def compute_deviation(self, tip_percentages: dict) -> dict:
-        """
-        Calcola la deviazione del TIP sulla base delle percentuali attuali.
-
-        Args:
-            tip_percentages (dict): Percentuali dei TIP correnti.
-
-        Returns:
-            dict: Nuove percentuali dei TIP corrette.
-        """
-        min_pnrr_tips, max_pnrr_tips = [], []
-        for entity in {**self.producers, **self.prosumers}.values():
-            min_pnrr_tip_coefficient = get_tip_coefficient(
-                tip_th=entity.tip_th,
-                tip_base=entity.tip_base,
-                pi_zone=entity.get_current_data('price_exp'),
-                fi_zone=entity.fi_zone,
-                pnrr=0.
-            )
-            max_pnrr_tip_coefficient = get_tip_coefficient(
-                tip_th=entity.tip_th,
-                tip_base=entity.tip_base,
-                pi_zone=entity.get_current_data('price_exp'),
-                fi_zone=entity.fi_zone,
-                pnrr=self.max_pnrr
-            )
-            min_pnrr_tip = min_pnrr_tip_coefficient * entity.exported_energies[self.time_step]
-            max_pnrr_tip = max_pnrr_tip_coefficient * entity.exported_energies[self.time_step]
-            min_pnrr_tips.append(min_pnrr_tip)
-            max_pnrr_tips.append(max_pnrr_tip)
-
-        cer_min_pnrr_tip = sum(min_pnrr_tips)
-        cer_max_pnrr_tip = sum(max_pnrr_tips)
-
-        cer_tip_deviation = cer_min_pnrr_tip - self.cer_actual_tips[self.time_step]
-        cer_tip_deviation_percentage = cer_tip_deviation / cer_max_pnrr_tip * 100
-
-        os_percentage_increase = cer_tip_deviation_percentage / (self.pnrr_thresholds[1] - self.pnrr_thresholds[0])
-
-        new_tip_percentages = tip_percentages.copy()
-        new_tip_percentages['os'] += os_percentage_increase
-        new_tip_percentages['impresa'] -= (os_percentage_increase / 2.)
-        new_tip_percentages['produttore'] -= (os_percentage_increase / 2.)
-
-        return new_tip_percentages
-
-    def compute_distribution(self, tip_distribution: dict) -> None:
-        """
-        Calcola e distribuisce i TIP tra produttori e consumatori.
-
-        Args:
-            tip_distribution (dict): Distribuzione dei TIP per categoria (produttori, consumatori, ecc.).
-        """
-        # TIP produttori
-        for node in {**self.producers, **self.prosumers}.values():
-            try:
-                node.tip_contributions_prod.append(
-                    node.potential_tips_prod[self.time_step] * self.cer_energy_selfcons_percentages[self.time_step] /
-                    self.cer_actual_tips[self.time_step] * 100.
-                )
-            except ZeroDivisionError:
-                node.tip_contributions_prod.append(0.)
-            node.actual_tips_prod.append(
-                node.tip_contributions_prod[self.time_step] * tip_distribution['produttore'] / 100.
-            )
-
-        # TIP consumatori
-        retails_consumption = 0.
-        factories_consumption = 0.
-        for node in {**self.consumers, **self.prosumers}.values():
-            if node.node_type == 'retail':
-                retails_consumption += node.imported_energies[self.time_step]
-            elif node.node_type == 'factory':
-                factories_consumption += node.imported_energies[self.time_step]
-
-        retails_surplus, retails_actual_tip = 0., 0.
-        for node in {**self.consumers, **self.prosumers}.values():
-            if node.node_type == 'retail':
-                try:
-                    node.tip_contributions_cons.append(
-                        node.imported_energies[self.time_step] / retails_consumption * 100.
-                    )
-                    node.potential_tips_cons.append(
-                        node.tip_contributions_cons[self.time_step] * tip_distribution['retail'] / 100.
-                    )
-
-                    node.actual_tips_cons.append(
-                        min(node.potential_tips_cons[self.time_step],
-                            node.imported_energies[self.time_step] * self.max_tip_retail)
-                    )
-
-                    retails_surplus += (node.potential_tips_cons[self.time_step] -
-                                        node.actual_tips_cons[self.time_step])
-                    retails_actual_tip += node.actual_tips_cons[self.time_step]
-                except ZeroDivisionError:
-                    node.tip_contributions_cons.append(0.)
-                    node.potential_tips_cons.append(0.)
-                    node.actual_tips_cons.append(0.)
-
-            elif node.node_type == 'factory':
-                try:
-                    node.tip_contributions_cons.append(
-                        node.imported_energies[self.time_step] / factories_consumption * 100.
-                    )
-                    node.actual_tips_cons.append(
-                        node.tip_contributions_cons[self.time_step] * tip_distribution['impresa'] / 100.
-                    )
-                except ZeroDivisionError:
-                    node.tip_contributions_cons.append(0.)
-                    node.actual_tips_cons.append(0.)
-            else:
-                # nodi non soggetti a TIP
-                node.tip_contributions_cons.append(0.)
-                node.actual_tips_cons.append(0.)
-
-        # TIP retail potenziale
-        tip_distribution['retail_reale'] = retails_actual_tip
-
-        # TIP opere sociali
-        tip_distribution['os'] += retails_surplus
-
-        # check somma TIP
-        tip_sum = sum(value for key, value in tip_distribution.items() if key != 'retail')
-        assert round(tip_sum, 1) == round(self.cer_actual_tips[self.time_step], 1), \
-            (f"Errore nel calcolo della distribuzione del TIP -> "
-             f"Somma della distribuzione del TIP ({tip_sum}) diversa dal TIP ({self.cer_actual_tips[self.time_step]})")
-
-        # Append tip_distribution to cer_tip_distributions
-        self.cer_tip_distributions.append(tip_distribution)
-
     def get_sim_results(self) -> dict:
         """
-        Ottiene i risultati della simulazione in un formato strutturato.
+        Get simulation results in a structured format.
 
         Returns:
-            dict: Risultati della simulazione, inclusi energia importata, esportata, e TIP.
+            dict: Simulation results, including imported energy, exported energy, and TIP.
         """
         cer_table = {
             'datetime': self.nodes[self.nodes_ids[0]].date_time[0:self.time_step + 1].tolist(),
-            'energia_importata': self.cer_imported_energies[0:self.time_step + 1],
-            'energia_esportata': self.cer_exported_energies[0:self.time_step + 1],
-            'energia_autoconsumata': self.cer_energy_selfcons[0:self.time_step + 1],
-            'autoconsumo_percentuale': self.cer_energy_selfcons_percentages[0:self.time_step + 1],
-            'spesa_energia': self.cer_energy_expense[0:self.time_step + 1],
-            'ricavi_energia': self.cer_energy_revenue[0:self.time_step + 1],
-            'tip_potenziale': self.cer_potential_tips[0:self.time_step + 1],
-            'tip_reale': self.cer_actual_tips[0:self.time_step + 1],
-            'tip_gestione': [tip['gestione'] for tip in self.cer_tip_distributions][0:self.time_step + 1],
-            'tip_ceritalia': [tip['ceritalia'] for tip in self.cer_tip_distributions][0:self.time_step + 1],
-            'tip_produttore': [tip['produttore'] for tip in self.cer_tip_distributions][0:self.time_step + 1],
-            'tip_retail_potenziale': [tip['retail'] for tip in self.cer_tip_distributions][0:self.time_step + 1],
-            'tip_retail_reale': [tip['retail_reale'] for tip in self.cer_tip_distributions][0:self.time_step + 1],
-            'tip_impresa': [tip['impresa'] for tip in self.cer_tip_distributions][0:self.time_step + 1],
-            'tip_os': [tip['os'] for tip in self.cer_tip_distributions][0:self.time_step + 1],
+            'imported_energy': self.cer_imported_energy[0:self.time_step + 1],
+            'exported_energy': self.cer_exported_energy[0:self.time_step + 1],
+            'selfconsumption': self.cer_energy_selfcons[0:self.time_step + 1],
+            'selfconsumption_percentage': self.cer_energy_selfcons_percentage[0:self.time_step + 1],
+            'energy_expense': self.cer_energy_expense[0:self.time_step + 1],
+            'energy_revenue': self.cer_energy_revenue[0:self.time_step + 1],
+            'tip_potential': self.cer_potential_tip[0:self.time_step + 1],
+            'tip_actual': self.cer_actual_tip[0:self.time_step + 1],
         }
 
+        # TODO: create function and apply to all nodes
         producer_tables = {}
         for node in self.producers.values():
             producer_tables[node.node_id] = {
                 'datetime': node.date_time[0:self.time_step + 1].tolist(),
-                'prezzo_vendita': node.price_exp[0:self.time_step + 1].tolist(),
-                'energia_prodotta': node.production[0:self.time_step + 1].tolist(),
+                'price_export': node.price_exp[0:self.time_step + 1].tolist(),
+                'energy_produced': node.production[0:self.time_step + 1].tolist(),
             }
-            if node.storage and self.controller:
+            if node.storage:
                 producer_tables[node.node_id].update({
-                    'soc_iniziale': node.storage.soc_init_list[0:self.time_step + 1],
-                    'azione_desiderata': node.storage.energy_desired[0:self.time_step + 1],
-                    'energia_caricata': node.storage.actual_charges[0:self.time_step + 1],
-                    'energia_scaricata': node.storage.actual_discharges[0:self.time_step + 1],
-                    'violazione_vincoli': node.storage.constraint_violation[0:self.time_step + 1],
-                    'soc_finale': node.storage.soc_final_list[0:self.time_step + 1],
+                    'soc_init': node.storage.soc_init_list[0:self.time_step + 1],
+                    'action_desired': node.storage.energy_desired[0:self.time_step + 1],
+                    'charge': node.storage.actual_charges[0:self.time_step + 1],
+                    'discharge': node.storage.actual_discharges[0:self.time_step + 1],
+                    'constraint_violation': node.storage.constraint_violation[0:self.time_step + 1],
+                    'soc_final': node.storage.soc_final_list[0:self.time_step + 1],
                 })
             producer_tables[node.node_id].update({
-                'energia_esportata': node.exported_energies[0:self.time_step + 1],
-                'contributo_tip': node.tip_contributions_prod[0:self.time_step + 1],
-                'tip_potenziale': node.potential_tips_prod[0:self.time_step + 1],
-                'tip_reale': node.actual_tips_prod[0:self.time_step + 1],
+                'energy_exported': node.exported_energies[0:self.time_step + 1],
+                'tip': node.actual_tips_prod[0:self.time_step + 1],
             })
 
         consumer_tables = {}
         for node in self.consumers.values():
             consumer_tables[node.node_id] = {
                 'datetime': node.date_time[0:self.time_step + 1].tolist(),
-                'prezzo_acquisto': node.price_imp[0:self.time_step + 1].tolist(),
-                'energia_consumata': node.consumption[0:self.time_step + 1].tolist(),
+                'price_import': node.price_imp[0:self.time_step + 1].tolist(),
+                'energy_consumed': node.consumption[0:self.time_step + 1].tolist(),
+                'energy_imported': node.imported_energies[0:self.time_step + 1],
+                'tip': node.actual_tips_cons[0:self.time_step + 1],
             }
-            if node.node_type == 'retail':
-                consumer_tables[node.node_id].update({
-                    'energia_importata': node.imported_energies[0:self.time_step + 1],
-                    'tip_potenziale': node.potential_tips_cons[0:self.time_step + 1],
-                    'tip_reale': node.actual_tips_cons[0:self.time_step + 1],
-                })
-            elif node.node_type == 'factory':
-                consumer_tables[node.node_id].update({
-                    'energia_importata': node.imported_energies[0:self.time_step + 1],
-                    'tip_potenziale': node.actual_tips_cons[0:self.time_step + 1],
-                    'tip_reale': node.actual_tips_cons[0:self.time_step + 1],
-                })
 
         prosumer_tables = {}
         for node in self.prosumers.values():
             prosumer_tables[node.node_id] = {
                 'datetime': node.date_time[0:self.time_step + 1].tolist(),
-                'prezzo_vendita': node.price_exp[0:self.time_step + 1].tolist(),
-                'prezzo_acquisto': node.price_imp[0:self.time_step + 1].tolist(),
-                'energia_prodotta': node.production[0:self.time_step + 1].tolist(),
-                'energia_consumata': node.consumption[0:self.time_step + 1].tolist(),
+                'price_export': node.price_exp[0:self.time_step + 1].tolist(),
+                'price_import': node.price_imp[0:self.time_step + 1].tolist(),
+                'energy_produced': node.production[0:self.time_step + 1].tolist(),
+                'energy_consumed': node.consumption[0:self.time_step + 1].tolist(),
             }
-            if node.storage and self.controller:
+            if node.storage:
                 prosumer_tables[node.node_id].update({
-                    'soc_iniziale': node.storage.soc_init_list[0:self.time_step + 1],
-                    'azione_desiderata': node.storage.energy_desired[0:self.time_step + 1],
-                    'energia_caricata': node.storage.actual_charges[0:self.time_step + 1],
-                    'energia_scaricata': node.storage.actual_discharges[0:self.time_step + 1],
-                    'violazione_vincoli': node.storage.constraint_violation[0:self.time_step + 1],
-                    'soc_finale': node.storage.soc_final_list[0:self.time_step + 1],
+                    'soc_init': node.storage.soc_init_list[0:self.time_step + 1],
+                    'action_desired': node.storage.energy_desired[0:self.time_step + 1],
+                    'charge': node.storage.actual_charges[0:self.time_step + 1],
+                    'discharge': node.storage.actual_discharges[0:self.time_step + 1],
+                    'constraint_violation': node.storage.constraint_violation[0:self.time_step + 1],
+                    'soc_final': node.storage.soc_final_list[0:self.time_step + 1],
                 })
             prosumer_tables[node.node_id].update({
-                'energia_importata': node.imported_energies[0:self.time_step + 1],
-                'energia_esportata': node.exported_energies[0:self.time_step + 1],
-                'contributo_tip_prod': node.tip_contributions_prod[0:self.time_step + 1],
-                'tip_potenziale_prod': node.potential_tips_prod[0:self.time_step + 1],
-                'tip_reale_prod': node.actual_tips_prod[0:self.time_step + 1],
-            })
-            if node.node_type == 'retail':
-                prosumer_tables[node.node_id].update({
-                    'tip_potenziale_cons': node.potential_tips_cons[0:self.time_step + 1],
-                    'tip_reale_cons': node.actual_tips_cons[0:self.time_step + 1],
-                })
-            elif node.node_type == 'factory':
-                prosumer_tables[node.node_id].update({
-                    'tip_potenziale_cons': node.actual_tips_cons[0:self.time_step + 1],
-                    'tip_reale_cons': node.actual_tips_cons[0:self.time_step + 1],
+                'imported_energy': node.imported_energies[0:self.time_step + 1],
+                'exported_energy': node.exported_energies[0:self.time_step + 1],
+                'tip_production': node.actual_tips_prod[0:self.time_step + 1],
+                'tip_consumption': node.actual_tips_cons[0:self.time_step + 1],
                 })
 
         results = {
@@ -515,15 +291,19 @@ class Cer:
 
     def save_results(self, results: dict, save_mode: str = 'csv'):
         """
-        Ottiene i risultati della simulazione in un formato strutturato.
+        Saves the simulation results in a structured format.
 
-        Returns:
-            dict: Risultati della simulazione, inclusi energia importata, esportata, e TIP.
+        Args:
+            results (dict): Simulation results, including imported, exported energy, and TIP.
+            save_mode (str, optional): The mode for saving results, either 'csv' or 'db'. Default is 'csv'.
         """
+        # Create a directory for simulation results if it does not exist
         if not os.path.exists(f'{self.cer_path}/simulation'):
             os.makedirs(f'{self.cer_path}/simulation')
-        assert save_mode in ['csv', 'db'], (f'Modalità di salvataggio non riconosciuta: {save_mode}. '
-                                            f'Selezione tra "csv" e "db"')
+
+        assert save_mode in ['csv', 'db'], (f'Unrecognized save mode: {save_mode}. '
+                                            f'Select between "csv" and "db"')
+
         if save_mode == 'csv':
             save_results_to_csv(csv_path=f'{self.cer_path}/simulation', results=results)
         elif save_mode == 'db':
@@ -531,7 +311,7 @@ class Cer:
 
     def next_hour(self):
         """
-        Avanza al passo temporale successivo nella simulazione, aggiornando il time_step per tutti i nodi.
+        Advances to the next time step in the simulation, updating the time_step for all nodes.
         """
         self.time_step += 1
         for node in self.nodes.values():

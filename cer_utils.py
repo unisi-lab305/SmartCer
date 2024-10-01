@@ -10,27 +10,27 @@ import csv
 import os
 
 
-def node_loader(cer_path: str) -> Tuple[Dict[str, Producer], Dict[str, Consumer], Dict[str, Prosumer], str]:
+# TODO: add tip coefficient to the producer and prosumer classes
+def node_loader(cer_path: str) -> Tuple[Dict[str, Producer], Dict[str, Consumer], Dict[str, Prosumer]]:
     """
-    Crea i nodi produttori e consumatori dal file config.json.
+    Creates producer and consumer nodes from the config.json file.
 
-    :param (str) cer_path: Percorso della cartella CER
+    :param (str) cer_path: Path to the CER folder
 
-    :return (Tuple[Dict[str, Producer], Dict[str, Consumer], Dict[str, Producer], str):
-    Dizionari dei nodi produttori e consumatori e tipologia del controller dei sistemi di accumulo.
-
+    :return (Tuple[Dict[str, Producer], Dict[str, Consumer], Dict[str, Prosumer]]:
+    Dictionaries of producer and consumer nodes.
     """
     with open(f'{cer_path}/config.json') as f:
         config = json.load(f)
         producers_config = config['Producers']
         consumers_config = config['Consumers']
         prosumers_config = config['Prosumers']
-        controller = config['Cer']['simulazione']['storage_controller']
 
     producers, consumers, prosumers = {}, {}, {}
 
+    # PRODUCERS
     start = time.time()
-    print('\nCaricamento nodi in corso...')
+    print('\nLoading nodes...')
     for p_id, p_data in producers_config.items():
         storage = Battery(**p_data['Storage']) if p_data.get('Storage') else None
         producers[p_id] = Producer(
@@ -40,8 +40,9 @@ def node_loader(cer_path: str) -> Tuple[Dict[str, Producer], Dict[str, Consumer]
             storage=storage,
             **p_data['Photovoltaic'],
         )
-    print(f'Producers ({len(producers)}) caricati in {time.time() - start:.2f} secondi')
+    print(f'Producers ({len(producers)}) loaded in {time.time() - start:.2f} seconds')
 
+    # CONSUMERS
     start = time.time()
     for c_id, c_data in consumers_config.items():
         storage = Battery(**c_data['Storage']) if c_data.get('Storage') else None
@@ -51,8 +52,9 @@ def node_loader(cer_path: str) -> Tuple[Dict[str, Producer], Dict[str, Consumer]
             node_type=c_data['Type'],
             storage=storage
         )
-    print(f'Consumers ({len(consumers)}) caricati in {time.time() - start:.2f} secondi')
+    print(f'Consumers ({len(consumers)}) loaded in {time.time() - start:.2f} seconds')
 
+    # PROSUMERS
     start = time.time()
     for ps_id, ps_data in prosumers_config.items():
         storage = Battery(**ps_data['Storage']) if ps_data.get('Storage') else None
@@ -63,73 +65,48 @@ def node_loader(cer_path: str) -> Tuple[Dict[str, Producer], Dict[str, Consumer]
             storage=storage,
             **ps_data['Photovoltaic'],
         )
-    print(f'Prosumers ({len(prosumers)}) caricati in {time.time() - start:.2f} secondi')
+    print(f'Prosumers ({len(prosumers)}) loaded in {time.time() - start:.2f} seconds')
 
-    return producers, consumers, prosumers, controller
+    return producers, consumers, prosumers
 
 
 def get_tip_coefficient(tip_th: float, tip_base: float, pi_zone: float, fi_zone: float, pnrr: float) -> float:
     """
-    Calcola il TIP dell'unità u-esima [€/kWh].
+    Calculates the TIP of the u-th unit [€/kWh].
 
-    :param (float) tip_th: Valore soglia TIP [€/kWh]
-    :param (float) tip_base: Valore base TIP [€/kWh]
-    :param (float) pi_zone: Prezzo zonale orario [€/kWh]
-    :param (float) fi_zone: Fattore di correzione zonale [€/kWh]
-    :param (float) pnrr: Percentuale finanziamento impianto [%]
+    :param (float) tip_th: TIP threshold value [€/kWh]
+    :param (float) tip_base: Base TIP value [€/kWh]
+    :param (float) pi_zone: Hourly zonal price [€/kWh]
+    :param (float) fi_zone: Zonal correction factor [€/kWh]
+    :param (float) pnrr: Percentage of plant financing [%]
 
-    :return (float): TIP potenziale [€/kWh]
+    :return (float): Potential TIP [€/kWh]
     """
 
-    # fattore di correzione conto capitale
-    assert pnrr <= 40, 'Percentuale finanziamento impianto superiore al 40%'
+    # Capital account correction factor
+    assert pnrr <= 40, 'Plant financing percentage exceeds 40%'
     fi_cc = 0.5 * pnrr / 40
 
     return (min(tip_th, tip_base + max(0., 0.180 - pi_zone)) + fi_zone) * (1 - fi_cc)
 
 
-def get_tip_percentages(tip_table_path: str,  cer_trade: float) -> Dict[str, float]:
-    """
-    Calcola le percentuali di distribuzione del TIP in base alla tabella di configurazione.
-
-    :param (str) tip_table_path: Percorso del file tip_distribution.json
-    :param (float) cer_trade: Scambio di energia della CER con la rete [kWh]
-
-    :return (Dict[str, float]): Dizionario dei TIP percentuali
-
-    :raises FileNotFoundError: Se il file tip_table_path non esiste
-    """
-
-    try:
-        with open(tip_table_path, 'r') as f:
-            tip_table = json.load(f)
-    except FileNotFoundError:
-        raise FileNotFoundError(f'File {tip_table_path} non trovato')
-
-    # controllo somma percentuali
-    for rule, values in tip_table.items():
-        total_percentage = (values['gestione'] + values['ceritalia'] + values['impresa'] +
-                            values['produttore'] + values['retail'] +
-                            values['os'])
-        assert total_percentage == 100, f'Somma percentuali diversa da 100% per {rule}: {total_percentage}%'
-
-    for rule, values in tip_table.items():
-        if values['range'][0] <= cer_trade*100 <= values['range'][1]:
-            return {key: values[key] for key in ['gestione', 'ceritalia', 'impresa', 'produttore', 'retail', 'os']}
-    raise ValueError(f'Percentuale energia scambiata non valida: cer_trade={cer_trade*100}%')
-
-
 def save_results_to_db(db_path: str, results: Dict):
     """
-    Salva i risultati della simulazione nel database SQLite.
+    Saves the simulation results to the SQLite database.
 
-    :param (str) db_path: Percorso del database.
-    :param (Dict) results: Risultati della simulazione.
+    :param (str) db_path: Path to the database.
+    :param (Dict) results: Simulation results.
     """
-    raise NotImplementedError('Funzione non implementata')
+    raise NotImplementedError('Function not implemented')
 
 
 def write_csv(file_path: str, data: Dict) -> None:
+    """
+    Write data to a csv file.
+    :param file_path: path to the csv file
+    :param data: dictionary containing the data to write
+    :return: None
+    """
     columns = list(data.keys())
     with open(file_path, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
@@ -139,10 +116,10 @@ def write_csv(file_path: str, data: Dict) -> None:
 
 def save_results_to_csv(csv_path: str, results: Dict) -> None:
     """
-    Salva i risultati della simulazione nei file csv.
+    Saves the simulation results to CSV files.
 
-    :param (str) csv_path: Percorso della cartella dei file csv.
-    :param (Dict) results: Risultati della simulazione.
+    :param (str) csv_path: Path to the CSV files directory.
+    :param (Dict) results: Simulation results.
     """
     # CER
     write_csv(f'{csv_path}/cer_results.csv', results['cer'])

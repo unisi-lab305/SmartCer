@@ -4,89 +4,89 @@ import numpy as np
 
 class StorageSystem(ABC):
     """
-    Classe astratta che rappresenta un sistema di accumulo di energia.
+    Abstract class representing an energy storage system.
 
-    Questa classe definisce le interfacce per le operazioni di base che qualsiasi sistema di accumulo deve implementare,
-    come la carica, il reset e la terminazione.
+    This class defines the interfaces for the basic operations that any storage system must implement,
+    such as charging, resetting, and terminating.
 
-    Metodi astratti:
+    Abstract Methods:
         charge(energy: float, production: float) -> float:
-            Metodo per caricare o scaricare energia dal sistema di accumulo.
+            Method to charge or discharge energy from the storage system.
 
         reset() -> None:
-            Ripristina lo stato iniziale del sistema di accumulo.
+            Resets the initial state of the storage system.
 
         terminate() -> None:
-            Termina e pulisce eventuali risorse o stati finali del sistema di accumulo.
+            Terminates and cleans up any resources or final states of the storage system.
     """
 
     @abstractmethod
     def charge(self, energy: float, production: float) -> float:
         """
-        Metodo astratto per caricare o scaricare energia dal sistema di accumulo.
-        Dev'essere implementato dalle classi derivate.
+        Abstract method for charging or discharging energy from the storage system.
+        Must be implemented by derived classes.
 
         Args:
-            energy (float): L'energia da caricare o scaricare.
-            production (float): Produzione di energia disponibile per la carica.
+            energy (float): The energy to be charged or discharged.
+            production (float): Energy production available for charging.
 
         Returns:
-            float: Violazione dei vincoli di carica o scarica (se presente).
+            float: Constraint violations for charging or discharging (if any).
         """
         pass
 
     @abstractmethod
     def reset(self) -> None:
         """
-        Ripristina lo stato iniziale del sistema di accumulo.
+        Resets the initial state of the storage system.
         """
         pass
 
     @abstractmethod
     def terminate(self) -> None:
         """
-        Termina l'operazione del sistema di accumulo e libera eventuali risorse.
+        Terminates the operation of the storage system and frees any resources.
         """
         pass
 
 
 class Battery(StorageSystem):
     """
-    Classe che rappresenta una batteria come sistema di accumulo di energia.
+    Class representing a battery as an energy storage system.
 
-    Gestisce la carica e la scarica della batteria, applicando vincoli fisici come capacità massima,
-    potenza nominale e perdite di efficienza. La batteria subisce degradazione della capacità nel tempo
-    e tiene traccia delle violazioni dei vincoli durante le operazioni di carica e scarica.
+    Manages the charging and discharging of the battery, applying physical constraints such as maximum capacity,
+    rated power, and efficiency losses. The battery experiences capacity degradation over time
+    and tracks constraint violations during charging and discharging operations.
 
     Attributes:
-        capacity (float): Capacità massima della batteria (kWh).
-        rated_power (float): Potenza nominale della batteria (kW).
-        soc_min (float): Stato minimo di carica (SoC) della batteria (kWh).
-        ETA (float): Efficienza di carica/scarica della batteria.
-        ALFA (float): Coefficiente di perdita per il calcolo del SoC.
-        BETA (float): Coefficiente di degradazione della batteria.
-        soc (float): Stato attuale di carica della batteria (kWh).
-        time_step (int): Il contatore del tempo per il monitoraggio degli step di simulazione.
-        soc_init_list (List[float]): Lista che memorizza lo stato iniziale di carica per ogni step.
-        soc_final_list (List[float]): Lista che memorizza lo stato finale di carica per ogni step.
-        energy_desired (List[float]): Lista delle energie desiderate durante la carica/scarica.
-        actual_charges (List[float]): Lista delle quantità effettivamente caricate.
-        actual_discharges (List[float]): Lista delle quantità effettivamente scaricate.
-        constraint_violation (List[float]): Lista delle violazioni dei vincoli di carica/scarica.
+        capacity (float): Maximum capacity of the battery (kWh).
+        rated_power (float): Rated power of the battery (kW).
+        soc_min (float): Minimum state of charge (SoC) of the battery (kWh).
+        ETA (float): Efficiency of charging/discharging of the battery.
+        ALFA (float): Loss coefficient for SoC calculation.
+        BETA (float): Degradation coefficient of the battery.
+        soc (float): Current state of charge of the battery (kWh).
+        time_step (int): The time counter for monitoring simulation steps.
+        soc_init_list (List[float]): List storing the initial state of charge for each step.
+        soc_final_list (List[float]): List storing the final state of charge for each step.
+        energy_desired (List[float]): List of desired energies during charging/discharging.
+        actual_charges (List[float]): List of actually charged amounts.
+        actual_discharges (List[float]): List of actually discharged amounts.
+        constraint_violation (List[float]): List of constraint violations for charging/discharging.
     """
 
     def __init__(self, capacity: float, rated_power: float, soc_min: float, efficiency: float, alfa: float,
                  beta: float):
         """
-        Inizializza una nuova batteria con i parametri specificati.
+        Initializes a new battery with the specified parameters.
 
         Args:
-            capacity (float): Capacità massima della batteria (kWh).
-            rated_power (float): Potenza nominale della batteria (kW).
-            soc_min (float): Stato minimo di carica (SoC) come percentuale della capacità totale.
-            efficiency (float): Efficienza della batteria (valore tra 0 e 1).
-            alfa (float): Coefficiente di perdita per la carica/scarica.
-            beta (float): Coefficiente di degradazione della capacità.
+            capacity (float): Maximum capacity of the battery (kWh).
+            rated_power (float): Rated power of the battery (kW).
+            soc_min (float): Minimum state of charge (SoC) as a percentage of total capacity.
+            efficiency (float): Efficiency of the battery (value between 0 and 1).
+            alfa (float): Loss coefficient for charging/discharging.
+            beta (float): Degradation coefficient of capacity.
         """
         self.capacity = capacity
         self.c0 = capacity
@@ -96,7 +96,7 @@ class Battery(StorageSystem):
         self.ALFA = alfa
         self.BETA = beta
 
-        # Attributi che verranno resettati
+        # Attributes that will be reset
         self.soc = self.soc_min
         self.time_step = 0
         self.soc_init_list, self.soc_final_list = [], []
@@ -105,41 +105,43 @@ class Battery(StorageSystem):
 
     def charge(self, energy: float, production: float) -> float:
         """
-        Gestisce sia la carica che la scarica della batteria in base ai vincoli fisici e alle condizioni di produzione.
+        Manages both the charging and discharging of the battery based on physical constraints and production
+        conditions.
 
-        Se l'energia è positiva, si tenta di caricare la batteria. Se è negativa, si tenta di scaricarla.
-        La funzione rispetta i vincoli di capacità, potenza nominale, efficienza e arbitraggio energetico.
+        If the energy is positive, an attempt is made to charge the battery. If it is negative, an attempt is made to
+        discharge it.
+        The function respects constraints on capacity, rated power, efficiency, and energy arbitrage.
 
         Args:
-            energy (float): Energia da caricare (> 0) o scaricare (< 0) nella batteria.
-            production (float): Produzione disponibile da cui caricare la batteria (per vincolo di arbitraggio).
+            energy (float): Energy to be charged (> 0) or discharged (< 0) in the battery.
+            production (float): Available production from which to charge the battery (for arbitrage constraint).
 
         Returns:
-            float: Violazione dei vincoli di carica o scarica della batteria.
+            float: Violations of charging or discharging constraints of the battery.
         """
         self.energy_desired.append(energy)
         self.soc_init_list.append(self.soc)
 
-        # Calcolo del nuovo SoC (State of Charge)
+        # Calculate new SoC (State of Charge)
         soc_init = self.soc * (1 - self.ALFA)
 
-        # Carica della batteria
+        # Charging the battery
         if energy > 0:
-            # Vincolo della potenza nominale
+            # Rated power constraint
             energy = min(energy, self.rated_power)
-            # Vincolo della capacità
+            # Capacity constraint
             energy = min(energy, self.capacity - self.soc)
-            # Vincolo arbitraggio energetico
+            # Energy arbitrage constraint
             charging_energy = min(energy, production)
-            # Aggiornamento del SoC
+            # Update SoC
             self.soc = soc_init + charging_energy * self.ETA
             discharging_energy = 0.
         else:
-            # Vincolo della potenza nominale per la scarica
+            # Rated power constraint for discharging
             energy = max(energy, -self.rated_power)
-            # Vincolo della capacità per la scarica
+            # Capacity constraint for discharging
             discharging_energy = max(energy, min(self.soc_min - self.soc, 0))
-            # Aggiornamento del SoC
+            # Update SoC
             self.soc = soc_init + discharging_energy / self.ETA
             charging_energy = 0.
 
@@ -151,20 +153,20 @@ class Battery(StorageSystem):
         violation = np.round(violation, 5)
         self.constraint_violation.append(violation)
 
-        # Controllo del vincolo del SoC
+        # Check SoC constraint
         assert 0. <= self.soc <= self.capacity, (
-            f'SoC: {self.soc:.2f} non valido.\n'
-            f'Capacità massima: {self.capacity}, SoC minimo: {self.soc_min}\n'
-            f'SoC iniziale: {soc_init:.2f}, Energia: {constrained_energy:.2f}')
+            f'SoC: {self.soc:.2f} is not valid.\n'
+            f'Max capacity: {self.capacity}, Min SoC: {self.soc_min}\n'
+            f'Initial SoC: {soc_init:.2f}, Energy: {constrained_energy:.2f}')
         self.soc_final_list.append(self.soc)
 
-        # Energia scambiata con l'ambiente
+        # Energy exchanged with the environment
         if constrained_energy > 0:
             energy_trade = (self.soc - soc_init) / self.ETA
         else:
             energy_trade = (self.soc - soc_init) * self.ETA
 
-        # Degradamento della capacità della batteria
+        # Degradation of the battery's capacity
         try:
             self.capacity -= self.BETA * self.c0 * np.abs(energy_trade) / (2 * self.capacity)
         except ZeroDivisionError:
@@ -174,7 +176,7 @@ class Battery(StorageSystem):
 
     def reset(self) -> None:
         """
-        Ripristina lo stato iniziale della batteria, resettando tutti gli attributi variabili.
+        Resets the initial state of the battery, clearing all variable attributes.
         """
         self.soc = self.soc_min
         self.time_step = 0
@@ -184,7 +186,7 @@ class Battery(StorageSystem):
 
     def terminate(self) -> None:
         """
-        Termina le operazioni della batteria. Questo metodo può essere usato per liberare risorse
-        o salvare lo stato finale, se necessario.
+        Ends the battery's operations. This method can be used to free resources
+        or save the final state, if necessary.
         """
         pass
