@@ -1,6 +1,7 @@
 from typing import Tuple, Dict
 
-from environment.node_models import Producer, Consumer, Prosumer
+from node_models import Producer, Consumer, Prosumer
+from energy_models import Battery
 
 import sqlite3
 import time
@@ -9,14 +10,14 @@ import csv
 import os
 
 
-def node_loader(cer_path: str) -> Tuple[Dict[str, Producer], Dict[str, Consumer], Dict[str, Prosumer]]:
+def node_loader(cer_path: str) -> Tuple[Dict[str, Producer], Dict[str, Consumer], Dict[str, Prosumer], str]:
     """
     Crea i nodi produttori e consumatori dal file config.json.
 
     :param (str) cer_path: Percorso della cartella CER
 
-    :return (Tuple[Dict[str, Producer], Dict[str, Consumer], Dict[str, Producer]): Dizionari dei nodi produttori e
-    consumatori
+    :return (Tuple[Dict[str, Producer], Dict[str, Consumer], Dict[str, Producer], str):
+    Dizionari dei nodi produttori e consumatori e tipologia del controller dei sistemi di accumulo.
 
     """
     with open(f'{cer_path}/config.json') as f:
@@ -24,40 +25,47 @@ def node_loader(cer_path: str) -> Tuple[Dict[str, Producer], Dict[str, Consumer]
         producers_config = config['Producers']
         consumers_config = config['Consumers']
         prosumers_config = config['Prosumers']
+        controller = config['Cer']['simulazione']['storage_controller']
 
     producers, consumers, prosumers = {}, {}, {}
 
     start = time.time()
     print('\nCaricamento nodi in corso...')
     for p_id, p_data in producers_config.items():
+        storage = Battery(**p_data['Storage']) if p_data.get('Storage') else None
         producers[p_id] = Producer(
             data_dir=f'{cer_path}/nodes/producers',
             node_id=p_id,
             node_type=p_data['Type'],
+            storage=storage,
             **p_data['Photovoltaic'],
         )
     print(f'Producers ({len(producers)}) caricati in {time.time() - start:.2f} secondi')
 
     start = time.time()
     for c_id, c_data in consumers_config.items():
+        storage = Battery(**c_data['Storage']) if c_data.get('Storage') else None
         consumers[c_id] = Consumer(
             data_dir=f'{cer_path}/nodes/consumers',
             node_id=c_id,
-            node_type=c_data['Type']
+            node_type=c_data['Type'],
+            storage=storage
         )
     print(f'Consumers ({len(consumers)}) caricati in {time.time() - start:.2f} secondi')
 
     start = time.time()
     for ps_id, ps_data in prosumers_config.items():
+        storage = Battery(**ps_data['Storage']) if ps_data.get('Storage') else None
         prosumers[ps_id] = Prosumer(
             data_dir=f'{cer_path}/nodes/prosumers',
             node_id=ps_id,
             node_type=ps_data['Type'],
+            storage=storage,
             **ps_data['Photovoltaic'],
         )
     print(f'Prosumers ({len(prosumers)}) caricati in {time.time() - start:.2f} secondi')
 
-    return producers, consumers, prosumers
+    return producers, consumers, prosumers, controller
 
 
 def get_tip_coefficient(tip_th: float, tip_base: float, pi_zone: float, fi_zone: float, pnrr: float) -> float:
@@ -100,14 +108,14 @@ def get_tip_percentages(tip_table_path: str,  cer_trade: float) -> Dict[str, flo
 
     # controllo somma percentuali
     for rule, values in tip_table.items():
-        total_percentage = (values['gestione'] + values['impresa'] +
+        total_percentage = (values['gestione'] + values['ceritalia'] + values['impresa'] +
                             values['produttore'] + values['retail'] +
                             values['os'])
         assert total_percentage == 100, f'Somma percentuali diversa da 100% per {rule}: {total_percentage}%'
 
     for rule, values in tip_table.items():
         if values['range'][0] <= cer_trade*100 <= values['range'][1]:
-            return {key: values[key] for key in ['gestione', 'impresa', 'produttore', 'retail', 'os']}
+            return {key: values[key] for key in ['gestione', 'ceritalia', 'impresa', 'produttore', 'retail', 'os']}
     raise ValueError(f'Percentuale energia scambiata non valida: cer_trade={cer_trade*100}%')
 
 

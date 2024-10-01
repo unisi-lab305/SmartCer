@@ -1,5 +1,10 @@
+from typing import Tuple
+
+from energy_models import Battery
+
 import pandas as pd
 import numpy as np
+import sys
 import re
 import os
 
@@ -15,12 +20,14 @@ class Node:
         data_path (str): Percorso al file CSV contenente i dati del nodo.
         node_id (str): Identificativo univoco del nodo.
         node_type (str): Tipo del nodo (es. 'Consumer', 'Producer', 'Prosumer').
+        storage (StorageSystem, optional): Sistema di accumulo associato al nodo.
         time_step (int): Indice temporale corrente.
         data (pd.DataFrame): Dati del nodo in formato DataFrame.
         date_time (np.array): Array dei timestamp estratti dai dati.
-
         imported_energies (list): Lista delle energie importate.
         exported_energies (list): Lista delle energie esportate.
+        energy_expense (list): Costi energetici.
+        energy_revenue (list): Ricavi energetici.
         tip_coefficients (list): Coefficienti TIP.
         tip_contributions_prod (list): Contributi TIP per la produzione.
         tip_contributions_cons (list): Contributi TIP per il consumo.
@@ -30,7 +37,7 @@ class Node:
         actual_tips_cons (list): TIP effettivi per il consumo.
     """
 
-    def __init__(self, data_dir: str, node_id: str, node_type: str):
+    def __init__(self, data_dir: str, node_id: str, node_type: str, storage: Battery = None):
         """
         Inizializza la classe Node con il percorso dei dati, l'ID del nodo e il tipo di nodo.
 
@@ -38,10 +45,12 @@ class Node:
             data_dir (str): Directory contenente i dati del nodo.
             node_id (str): Identificativo del nodo.
             node_type (str): Tipo del nodo.
+            storage (StorageSystem, optional): Sistema di accumulo associato al nodo.
         """
         self.data_path = os.path.join(data_dir, f'{self.extract_base_name(node_id)}.csv')
         self.node_id = node_id
         self.node_type = node_type
+        self.storage = storage
 
         self.time_step = 0
         self.data = pd.DataFrame()
@@ -49,6 +58,8 @@ class Node:
 
         self.imported_energies = []
         self.exported_energies = []
+        self.energy_expense = []
+        self.energy_revenue = []
         self.tip_coefficients = []
         self.tip_contributions_prod = []
         self.tip_contributions_cons = []
@@ -116,6 +127,29 @@ class Node:
         """
         return self.data.iloc[self.time_step].values if column is None else self.data[column][self.time_step]
 
+    def set_storage(self, action: float) -> float:
+        """
+        Imposta l'energia da caricare o scaricare dallo storage.
+
+        Args:
+            action (float): azione di controllo per la carica o scarica dello storage ∈ [-1,1]
+
+        Returns:
+            float: violazione dei vincoli normalizzata.
+        """
+        energy = action * self.storage.capacity
+
+        try:
+            violation = self.storage.charge(energy, self.get_current_data('production'))
+            return violation / self.storage.capacity
+
+        except AssertionError as e:
+            print(f'\n{self.node_id} - {self.time_step}')
+            print(e)
+            print(f'Prod: {self.get_current_data("production"):.2f}, Cons: {self.get_current_data("consumption"):.2f}, '
+                  f'Action: {action:.2f}')
+            sys.exit(1)
+
     def reset(self):
         """
         Resetta lo stato del nodo, riportando il time step e i dati allo stato iniziale.
@@ -128,6 +162,8 @@ class Node:
         self.date_time = np.array([])
         self.imported_energies = []
         self.exported_energies = []
+        self.energy_expense = []
+        self.energy_revenue = []
         self.tip_coefficients = []
         self.tip_contributions_prod = []
         self.tip_contributions_cons = []
@@ -135,6 +171,9 @@ class Node:
         self.potential_tips_cons = []
         self.actual_tips_prod = []
         self.actual_tips_cons = []
+
+        if self.storage:
+            self.storage.reset()
 
         self.load_data()
 
@@ -150,7 +189,7 @@ class Consumer(Node):
         price_imp (np.array): Prezzi di acquisto dell'energia.
     """
 
-    def __init__(self, data_dir: str, node_id: str, node_type: str):
+    def __init__(self, data_dir: str, node_id: str, node_type: str, storage: Battery = None):
         """
         Inizializza la classe Consumer ereditando da Node.
 
@@ -158,8 +197,9 @@ class Consumer(Node):
             data_dir (str): Directory contenente i dati del nodo.
             node_id (str): Identificativo del nodo.
             node_type (str): Tipo del nodo.
+            storage (StorageSystem, optional): Sistema di accumulo associato al nodo.
         """
-        super().__init__(data_dir, node_id, node_type)
+        super().__init__(data_dir, node_id, node_type, storage)
 
         self.consumption = self.data['consumption'].values
         self.price_imp = self.data['price_imp'].values
@@ -182,7 +222,7 @@ class Producer(Node):
         price_exp (np.array): Prezzi di vendita dell'energia.
     """
 
-    def __init__(self, data_dir: str, node_id: str, node_type: str, **pv_args):
+    def __init__(self, data_dir: str, node_id: str, node_type: str, storage: Battery = None, **pv_args):
         """
         Inizializza la classe Producer ereditando da Node.
 
@@ -190,9 +230,10 @@ class Producer(Node):
             data_dir (str): Directory contenente i dati del nodo.
             node_id (str): Identificativo del nodo.
             node_type (str): Tipo del nodo.
+            storage (StorageSystem, optional): Sistema di accumulo associato al nodo.
             **pv_args: Argomenti aggiuntivi relativi all'impianto fotovoltaico.
         """
-        super().__init__(data_dir, node_id, node_type)
+        super().__init__(data_dir, node_id, node_type, storage)
         self.pv_power = pv_args['pv_power']
         self.pnrr = pv_args['pnrr']
         self.tip_base = pv_args['tip_base']
@@ -223,7 +264,7 @@ class Prosumer(Node):
         price_imp (np.array): Prezzi di acquisto dell'energia.
     """
 
-    def __init__(self, data_dir: str, node_id: str, node_type: str, **pv_args):
+    def __init__(self, data_dir: str, node_id: str, node_type: str, storage: Battery = None, **pv_args):
         """
         Inizializza la classe Prosumer ereditando da Node.
 
@@ -231,9 +272,10 @@ class Prosumer(Node):
             data_dir (str): Directory contenente i dati del nodo.
             node_id (str): Identificativo del nodo.
             node_type (str): Tipo del nodo.
+            storage (StorageSystem, optional): Sistema di accumulo associato al nodo.
             **pv_args: Argomenti aggiuntivi relativi all'impianto fotovoltaico.
         """
-        super().__init__(data_dir, node_id, node_type)
+        super().__init__(data_dir, node_id, node_type, storage)
         self.pv_power = pv_args['pv_power']
         self.pnrr = pv_args['pnrr']
         self.tip_base = pv_args['tip_base']

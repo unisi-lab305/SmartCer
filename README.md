@@ -1,2 +1,2 @@
 # smart-rec
-Smart Renewable Energy Community (CER) simulator 
+Smart Renewable Energy Community (REC) simulator 
