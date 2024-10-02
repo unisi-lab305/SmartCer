@@ -67,99 +67,30 @@ class Cer:
             for node_id, action in actions.items():
                 _ = self.nodes[node_id].set_storage(action)
 
-        # TODO: create function and apply to all nodes
-        # compute potential and actual TIP for each node
+        # compute potential/actual TIP and energy costs for each node
         for producer in self.producers.values():
-            # imported and exported energies
             energy_produced = producer.get_current_data('production')
             energy_consumed = 0.
-            if producer.storage:
-                energy_trade = (energy_produced + producer.storage.actual_discharges[self.time_step] -
-                                energy_consumed - producer.storage.actual_charges[self.time_step])
-            else:
-                energy_trade = energy_produced - energy_consumed
-            if energy_trade > 0:
-                energy_exported = energy_trade
-                energy_imported = 0.
-            else:
-                energy_exported = 0.
-                energy_imported = -energy_trade
+            energy_exported, energy_imported = get_energy_trade(producer, energy_produced, energy_consumed)
             assert energy_imported >= 0, (f'Energy arbitrage constraint violation -> '
                                           f'{producer.node_id} imported {energy_imported:.2f} kWh')
-
-            # TIP producers
             producer.exported_energies.append(energy_exported)
-            # TODO: move to node_loader
-            # TIP coefficient
-            coefficient_tip = get_tip_coefficient(
-                tip_th=producer.tip_th,
-                tip_base=producer.tip_base,
-                pi_zone=producer.get_current_data('price_exp'),
-                fi_zone=producer.fi_zone,
-                pnrr=producer.pnrr
-            )
-            producer.tip_coefficients.append(coefficient_tip)
-            # potential TIP [€/kWh]
-            potential_tip = coefficient_tip * producer.exported_energies[self.time_step]
-            producer.potential_tips_prod.append(potential_tip)
-
-            # energy costs
-            energy_revenue = producer.get_current_data('price_exp') * energy_exported
-            energy_expense = 0.
-            producer.energy_revenue.append(energy_revenue)
-            producer.energy_expense.append(energy_expense)
+            set_tip_and_costs(producer, energy_exported, energy_imported, is_producer=True)
 
         for consumer in self.consumers.values():
             energy_imported = consumer.get_current_data('consumption')
             consumer.imported_energies.append(energy_imported)
-
-            # calcolo costi energia
-            energy_revenue = 0.
-            energy_expense = consumer.get_current_data('price_imp') * energy_imported
-            consumer.energy_revenue.append(energy_revenue)
-            consumer.energy_expense.append(energy_expense)
+            set_tip_and_costs(consumer, 0, energy_imported, is_consumer=True)
 
         for prosumer in self.prosumers.values():
-            # imported and exported energies
             energy_produced = prosumer.get_current_data('production')
             energy_consumed = prosumer.get_current_data('consumption')
-            if prosumer.storage:
-                energy_trade = (energy_produced + prosumer.storage.actual_discharges[self.time_step] -
-                                energy_consumed - prosumer.storage.actual_charges[self.time_step])
-            else:
-                energy_trade = energy_produced - energy_consumed
-            if energy_trade > 0:
-                energy_exported = energy_trade
-                energy_imported = 0.
-            else:
-                energy_exported = 0.
-                energy_imported = -energy_trade
-
+            energy_exported, energy_imported = get_energy_trade(prosumer, energy_produced, energy_consumed)
             assert energy_imported * energy_exported == 0, f'Simultaneous import-export -> ' \
-                f'imported: {energy_imported:.2f}, exported: {energy_exported:.2f}'
-
-            # TIP prosumers
+                                                           f'imp: {energy_imported:.2f}, exp: {energy_exported:.2f}'
             prosumer.exported_energies.append(energy_exported)
             prosumer.imported_energies.append(energy_imported)
-            # TODO: move to node_loader
-            # TIP coefficient
-            coefficient_tip = get_tip_coefficient(
-                tip_th=prosumer.tip_th,
-                tip_base=prosumer.tip_base,
-                pi_zone=prosumer.get_current_data('price_exp'),
-                fi_zone=prosumer.fi_zone,
-                pnrr=prosumer.pnrr
-            )
-            prosumer.tip_coefficients.append(coefficient_tip)
-            # potential TIP [€/kWh]
-            potential_tip = coefficient_tip * prosumer.exported_energies[self.time_step]
-            prosumer.potential_tips_prod.append(potential_tip)
-
-            # energy costs
-            energy_revenue = prosumer.get_current_data('price_exp') * energy_exported
-            energy_expense = prosumer.get_current_data('price_imp') * energy_imported
-            prosumer.energy_revenue.append(energy_revenue)
-            prosumer.energy_expense.append(energy_expense)
+            set_tip_and_costs(prosumer, energy_exported, energy_imported)
 
         # CER imported and exported energy
         self.cer_exported_energy.append(
@@ -241,8 +172,7 @@ class Cer:
                     'soc_final': node.storage.soc_final_list[0:self.time_step + 1],
                 })
             producer_tables[node.node_id].update({
-                'energy_exported': node.exported_energies[0:self.time_step + 1],
-                'tip': node.actual_tips_prod[0:self.time_step + 1],
+                'energy_exported': node.exported_energies[0:self.time_step + 1]
             })
 
         consumer_tables = {}
@@ -251,8 +181,7 @@ class Cer:
                 'datetime': node.date_time[0:self.time_step + 1].tolist(),
                 'price_import': node.price_imp[0:self.time_step + 1].tolist(),
                 'energy_consumed': node.consumption[0:self.time_step + 1].tolist(),
-                'energy_imported': node.imported_energies[0:self.time_step + 1],
-                'tip': node.actual_tips_cons[0:self.time_step + 1],
+                'energy_imported': node.imported_energies[0:self.time_step + 1]
             }
 
         prosumer_tables = {}
@@ -275,9 +204,7 @@ class Cer:
                 })
             prosumer_tables[node.node_id].update({
                 'imported_energy': node.imported_energies[0:self.time_step + 1],
-                'exported_energy': node.exported_energies[0:self.time_step + 1],
-                'tip_production': node.actual_tips_prod[0:self.time_step + 1],
-                'tip_consumption': node.actual_tips_cons[0:self.time_step + 1],
+                'exported_energy': node.exported_energies[0:self.time_step + 1]
                 })
 
         results = {

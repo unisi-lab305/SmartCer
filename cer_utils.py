@@ -1,7 +1,8 @@
-from typing import Tuple, Dict
-
 from node_models import Producer, Consumer, Prosumer
 from energy_models import Battery
+
+from typing import Tuple, Dict, Union
+from datetime import datetime
 
 import sqlite3
 import time
@@ -10,7 +11,6 @@ import csv
 import os
 
 
-# TODO: add tip coefficient to the producer and prosumer classes
 def node_loader(cer_path: str) -> Tuple[Dict[str, Producer], Dict[str, Consumer], Dict[str, Prosumer]]:
     """
     Creates producer and consumer nodes from the config.json file.
@@ -88,6 +88,63 @@ def get_tip_coefficient(tip_th: float, tip_base: float, pi_zone: float, fi_zone:
     fi_cc = 0.5 * pnrr / 40
 
     return (min(tip_th, tip_base + max(0., 0.180 - pi_zone)) + fi_zone) * (1 - fi_cc)
+
+
+def get_energy_trade(node: Union[Prosumer, Consumer, Producer],
+                     energy_produced: float, energy_consumed: float) -> Tuple[float, float]:
+    """
+    Calculates the energy exported and imported by the node.
+    :param (Node) node: Node object
+    :param (float) energy_produced: energy produced by the node
+    :param (float) energy_consumed: energy consumed by the node
+
+    :return (Tuple[float, float]): energy exported and imported by the node
+    """
+    if node.storage:
+        energy_trade = (energy_produced + node.storage.actual_discharges[node.time_step] -
+                        energy_consumed - node.storage.actual_charges[node.time_step])
+    else:
+        energy_trade = energy_produced - energy_consumed
+    if energy_trade > 0:
+        energy_exported = energy_trade
+        energy_imported = 0.
+    else:
+        energy_exported = 0.
+        energy_imported = -energy_trade
+    return energy_exported, energy_imported
+
+
+def set_tip_and_costs(node: Union[Prosumer, Consumer, Producer], energy_exported: float, energy_imported: float,
+                      is_producer: bool = False, is_consumer: bool = False) -> None:
+    """
+    Sets the TIP coefficient and energy costs for the node.
+    :param (Union[Prosumer, Consumer, Producer]) node: Node object
+    :param (float) energy_exported: energy exported by the node
+    :param (float) energy_imported: energy imported by the node
+    :param (bool) is_producer: flag indicating if the node is a producer
+    :param (bool) is_consumer: flag indicating if the node is a consumer
+
+    :return: None
+    """
+    # TIP coefficient
+    if not is_consumer:
+        coefficient_tip = get_tip_coefficient(
+            tip_th=node.tip_th,
+            tip_base=node.tip_base,
+            pi_zone=node.get_current_data('price_exp'),
+            fi_zone=node.fi_zone,
+            pnrr=node.pnrr
+        )
+        node.tip_coefficients.append(coefficient_tip)
+        # potential TIP [€/kWh]
+        potential_tip = coefficient_tip * energy_exported
+        node.potential_tips_prod.append(potential_tip)
+
+    # energy costs
+    energy_revenue = 0. if is_consumer else node.get_current_data('price_exp') * energy_exported
+    energy_expense = 0. if is_producer else node.get_current_data('price_imp') * energy_imported
+    node.energy_revenue.append(energy_revenue)
+    node.energy_expense.append(energy_expense)
 
 
 def save_results_to_db(db_path: str, results: Dict):
