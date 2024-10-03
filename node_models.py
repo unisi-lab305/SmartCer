@@ -1,5 +1,6 @@
 from energy_models import Battery
 
+from typing import Tuple, Dict
 import pandas as pd
 import numpy as np
 import sys
@@ -16,6 +17,8 @@ class Node:
 
     Attributes:
         data_path (str): Path to the CSV file containing node data.
+        sim_start (str): Start date of the simulation period.
+        sim_end (str): End date of the simulation period.
         node_id (str): Unique identifier of the node.
         node_type (str): Type of the node (e.g., 'Consumer', 'Producer', 'Prosumer').
         storage (StorageSystem, optional): Associated storage system for the node.
@@ -35,17 +38,20 @@ class Node:
         actual_tips_cons (list): Actual TIPs for consumption.
     """
 
-    def __init__(self, data_dir: str, node_id: str, node_type: str, storage: Battery = None):
+    def __init__(self, data_dir: str,
+                 sim_period: Tuple[str, str], node_id: str, node_type: str, storage: Battery = None):
         """
         Initializes the Node class with data path, node ID, and node type.
 
         Args:
             data_dir (str): Directory containing node data.
+            sim_period (Tuple[str, str]): Start and end dates of the simulation period.
             node_id (str): Identifier of the node.
             node_type (str): Type of the node.
             storage (StorageSystem, optional): Associated storage system for the node.
         """
         self.data_path = os.path.join(data_dir, f'{self.extract_base_name(node_id)}.csv')
+        self.sim_start, self.sim_end = sim_period
         self.node_id = node_id
         self.node_type = node_type
         self.storage = storage
@@ -84,12 +90,14 @@ class Node:
 
     def load_data(self) -> None:
         """
-        Loads data from the CSV file into the DataFrame.
+        Loads and filters data from the CSV file into the DataFrame.
 
         Returns:
             None
         """
-        self.data = pd.read_csv(self.data_path)
+        data = pd.read_csv(self.data_path)
+        filtered_data = data[(data['datetime'] >= self.sim_start) & (data['datetime'] <= self.sim_end)]
+        self.data = filtered_data.reset_index(drop=True)
         self.date_time = self.data['datetime'].values
 
     def get_data(self, column: str = None) -> pd.DataFrame:
@@ -187,17 +195,19 @@ class Consumer(Node):
         price_imp (np.array): Purchase prices of energy.
     """
 
-    def __init__(self, data_dir: str, node_id: str, node_type: str, storage: Battery = None):
+    def __init__(self, data_dir: str,
+                 sim_period: Tuple[str, str], node_id: str, node_type: str, storage: Battery = None):
         """
         Initializes the Consumer class by inheriting from Node.
 
         Args:
             data_dir (str): Directory containing the node's data.
+            sim_period (Tuple[str, str]): Start and end dates of the simulation period.
             node_id (str): Unique identifier of the node.
             node_type (str): Type of the node.
             storage (StorageSystem, optional): Associated storage system with the node.
         """
-        super().__init__(data_dir, node_id, node_type, storage)
+        super().__init__(data_dir, sim_period, node_id, node_type, storage)
 
         self.consumption = self.data['consumption'].values
         self.price_imp = self.data['price_imp'].values
@@ -220,18 +230,20 @@ class Producer(Node):
         price_exp (np.array): Selling prices of energy.
     """
 
-    def __init__(self, data_dir: str, node_id: str, node_type: str, storage: Battery = None, **pv_args):
+    def __init__(self, data_dir: str, sim_period: Tuple[str, str],
+                 node_id: str, node_type: str, storage: Battery = None, **pv_args: Dict):
         """
         Initializes the Producer class by inheriting from Node.
 
         Args:
             data_dir (str): Directory containing the node's data.
+            sim_period (Tuple[str, str]): Start and end dates of the simulation period.
             node_id (str): Unique identifier of the node.
             node_type (str): Type of the node.
             storage (StorageSystem, optional): Associated storage system with the node.
             **pv_args: Additional arguments related to the photovoltaic system.
         """
-        super().__init__(data_dir, node_id, node_type, storage)
+        super().__init__(data_dir, sim_period, node_id, node_type, storage)
         self.pv_power = pv_args['pv_power']
         self.pnrr = pv_args['pnrr']
         self.tip_base = pv_args['tip_base']
@@ -262,18 +274,20 @@ class Prosumer(Node):
         price_imp (np.array): Purchasing prices of energy.
     """
 
-    def __init__(self, data_dir: str, node_id: str, node_type: str, storage: Battery = None, **pv_args):
+    def __init__(self, data_dir: str, sim_period: Tuple[str, str],
+                 node_id: str, node_type: str, storage: Battery = None, **pv_args: Dict):
         """
         Initializes the Prosumer class by inheriting from Node.
 
         Args:
             data_dir (str): Directory containing the node's data.
+            sim_period (Tuple[str, str]): Start and end dates of the simulation period.
             node_id (str): Unique identifier of the node.
             node_type (str): Type of the node.
             storage (StorageSystem, optional): Associated storage system with the node.
             **pv_args: Additional arguments related to the photovoltaic system.
         """
-        super().__init__(data_dir, node_id, node_type, storage)
+        super().__init__(data_dir, sim_period, node_id, node_type, storage)
         self.pv_power = pv_args['pv_power']
         self.pnrr = pv_args['pnrr']
         self.tip_base = pv_args['tip_base']

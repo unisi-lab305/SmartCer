@@ -25,6 +25,8 @@ def node_loader(cer_path: str) -> Tuple[Dict[str, Producer], Dict[str, Consumer]
         producers_config = config['Producers']
         consumers_config = config['Consumers']
         prosumers_config = config['Prosumers']
+        sim_start = config['Cer']['simulazione']['inizio']
+        sim_end = config['Cer']['simulazione']['fine']
 
     producers, consumers, prosumers = {}, {}, {}
 
@@ -35,6 +37,7 @@ def node_loader(cer_path: str) -> Tuple[Dict[str, Producer], Dict[str, Consumer]
         storage = Battery(**p_data['Storage']) if p_data.get('Storage') else None
         producers[p_id] = Producer(
             data_dir=f'{cer_path}/nodes/producers',
+            sim_period=(sim_start, sim_end),
             node_id=p_id,
             node_type=p_data['Type'],
             storage=storage,
@@ -48,6 +51,7 @@ def node_loader(cer_path: str) -> Tuple[Dict[str, Producer], Dict[str, Consumer]
         storage = Battery(**c_data['Storage']) if c_data.get('Storage') else None
         consumers[c_id] = Consumer(
             data_dir=f'{cer_path}/nodes/consumers',
+            sim_period=(sim_start, sim_end),
             node_id=c_id,
             node_type=c_data['Type'],
             storage=storage
@@ -60,6 +64,7 @@ def node_loader(cer_path: str) -> Tuple[Dict[str, Producer], Dict[str, Consumer]
         storage = Battery(**ps_data['Storage']) if ps_data.get('Storage') else None
         prosumers[ps_id] = Prosumer(
             data_dir=f'{cer_path}/nodes/prosumers',
+            sim_period=(sim_start, sim_end),
             node_id=ps_id,
             node_type=ps_data['Type'],
             storage=storage,
