@@ -1,9 +1,21 @@
 from cer_utils import *
 
+from typing import Annotated, Literal, TypeVar, Any, Tuple, Dict, OrderedDict
+
+import gymnasium as gym
+from gymnasium import spaces
+
+import numpy.typing as npt
+import numpy as np
+
 import os
 
+DType = TypeVar('DType', bound=np.generic)
+Array1 = Annotated[npt.NDArray[DType], Literal[1]]
+ArrayN = Annotated[npt.NDArray[DType], Literal['N']]
 
-class Cer:
+
+class Cer(gym.Env):
     """
     Class for the simulation of a Renewable Energy Community (CER).
 
@@ -42,9 +54,26 @@ class Cer:
         self.prosumers_ids = list(self.prosumers.keys())
         self.nodes = {**self.producers, **self.consumers, **self.prosumers}
         self.nodes_ids = list(self.nodes.keys())
+        self.storage_nodes = {node_id: node for node_id, node in self.nodes.items() if node.storage}
+        self.storage_nodes_ids = list(self.storage_nodes.keys())
 
         self.time_step = 0
 
+        # PREPROCESSING
+        # TODO: Implement preprocessing
+
+        # GYM ATTRIBUTES
+        self.action_space = spaces.Dict(
+            {node_id: spaces.Box(low=-1., high=1., shape=(1,), dtype=np.float32)
+             for node_id in self.storage_nodes_ids}
+        )
+        self.observation_space = spaces.Dict(
+            {node_id: spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32)
+             for node_id in self.nodes_ids}
+        )
+        self.reward_range = (-np.inf, np.inf)
+
+        # RESET
         self.cer_exported_energy = []
         self.cer_imported_energy = []
         self.cer_energy_expense = []
@@ -54,18 +83,56 @@ class Cer:
         self.cer_potential_tip = []
         self.cer_actual_tip = []
 
-    def step(self, actions: Dict[str, float]) -> None:
+    def _get_obs(self):
+        # TODO: implement
+        return self.observation_space.sample()
+
+    def _get_reward(self):
+        # TODO: implement
+        return 0.
+
+    def _get_info(self):
+        # TODO: implement
+        return {}
+
+    def _next_hour(self):
+        """
+        Advances to the next time step in the simulation, updating the time_step for all nodes.
+        **To be called at the end of the step() method.**
+        """
+        self.time_step += 1
+        for node in self.nodes.values():
+            node.time_step = self.time_step
+            if node.storage:
+                node.storage.time_step = self.time_step
+
+    def _is_terminal(self) -> bool:
+        """
+        Check if the simulation has reached the terminal state.
+        **To be called after the next_hour() method.**
+
+        Returns:
+            bool: True if the simulation has reached the terminal state, False otherwise.
+        """
+        return self.time_step == len(self.nodes[self.nodes_ids[0]].date_time)
+
+    def step(self, actions: OrderedDict[str, Array1[np.float32]]) \
+            -> Tuple[OrderedDict[str, ArrayN[np.float32]], float, bool, bool, Dict[str, Any], None]:
         """
         Performs a simulation step, calculating the potential and actual TIP for producers, consumers, and prosumers.
         Updates exported and imported energies, self-consumption, and TIP distributions.
 
         Args:
-            actions (list): List of charge and discharge actions to perform for each node.
+            actions [OrderedDict[str, NDArray[(1,), np.float32]]: Action
+
+        Returns:
+            Tuple[OrderedDict[str, NDArray[(N,), np.float32]], float, bool, bool, Dict[str, Any], None]: Observation,
+            reward, termination flag,truncation flag, additional information, and done
         """
         # apply charge and discharge actions
         if actions:
             for node_id, action in actions.items():
-                _ = self.nodes[node_id].set_storage(action)
+                _ = self.nodes[node_id].set_storage(action[0])
 
         # compute potential/actual TIP and energy costs for each node
         for producer in self.producers.values():
@@ -119,10 +186,31 @@ class Cer:
         self.cer_actual_tip.append(
             self.cer_energy_selfcons_percentage[self.time_step] * self.cer_potential_tip[self.time_step])
 
-    def reset(self) -> None:
+        self._next_hour()
+
+        next_obs = self._get_obs()
+        reward = self._get_reward()
+        terminated = self._is_terminal()
+        truncated = terminated
+        info = self._get_info()
+        done = None
+
+        return next_obs, reward, terminated, truncated, info, done
+
+    def reset(self, seed: int | None = None, options: Dict[str, Any] = None) \
+            -> Tuple[OrderedDict[str, ArrayN[np.float32]], Dict[str, Any]]:
         """
         Reset the environment to the initial state, resetting all nodes.
+
+        Args:
+            seed (int, optional): Random seed for the environment. Default is None.
+            options (dict, optional): Additional information to specify how the environment is reset. Default is None.
+
+        Returns:
+            Tuple[OrderedDict[str, NDArray], Dict[str, Any]]: Observation and additional information
         """
+        super().reset(seed=seed)
+
         self.time_step = 0
         self.cer_exported_energy = []
         self.cer_imported_energy = []
@@ -134,6 +222,10 @@ class Cer:
         self.cer_actual_tip = []
         for node in self.nodes.values():
             node.reset()
+
+        obs = self._get_obs()
+        info = self._get_info()
+        return obs, info
 
     def get_sim_results(self) -> dict:
         """
@@ -157,7 +249,7 @@ class Cer:
         }
 
         # NODE TABLES
-        def create_node_table(node, time_step):
+        def _create_node_table(node, time_step):
             table = {
                 'datetime': node.date_time[0:time_step + 1].tolist(),
             }
@@ -184,9 +276,9 @@ class Cer:
                 table['energy_imported'] = node.imported_energies[0:time_step + 1]
             return table
 
-        producer_tables = {node.node_id: create_node_table(node, self.time_step) for node in self.producers.values()}
-        consumer_tables = {node.node_id: create_node_table(node, self.time_step) for node in self.consumers.values()}
-        prosumer_tables = {node.node_id: create_node_table(node, self.time_step) for node in self.prosumers.values()}
+        producer_tables = {node.node_id: _create_node_table(node, self.time_step) for node in self.producers.values()}
+        consumer_tables = {node.node_id: _create_node_table(node, self.time_step) for node in self.consumers.values()}
+        prosumer_tables = {node.node_id: _create_node_table(node, self.time_step) for node in self.prosumers.values()}
 
         results = {
             'cer': cer_table,
@@ -216,13 +308,3 @@ class Cer:
             save_results_to_csv(csv_path=f'{self.cer_path}/simulation', results=results)
         elif save_mode == 'db':
             save_results_to_db(db_path=f'{self.cer_path}/simulation', results=results)
-
-    def next_hour(self):
-        """
-        Advances to the next time step in the simulation, updating the time_step for all nodes.
-        """
-        self.time_step += 1
-        for node in self.nodes.values():
-            node.time_step = self.time_step
-            if node.storage:
-                node.storage.time_step = self.time_step

@@ -42,10 +42,9 @@ class StorageSystem(ABC):
         """
         pass
 
-    @abstractmethod
     def terminate(self) -> None:
         """
-        Terminates the operation of the storage system and frees any resources.
+        Ends storage operations. This method can be used to free resources or save the final state, if necessary.
         """
         pass
 
@@ -183,10 +182,3 @@ class Battery(StorageSystem):
         self.soc_init_list, self.soc_final_list = [], []
         self.energy_desired, self.actual_charges, self.actual_discharges = [], [], []
         self.constraint_violation = []
-
-    def terminate(self) -> None:
-        """
-        Ends the battery's operations. This method can be used to free resources
-        or save the final state, if necessary.
-        """
-        pass

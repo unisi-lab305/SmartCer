@@ -183,6 +183,13 @@ class Node:
 
         self.load_data()
 
+    def terminate(self) -> None:
+        """
+        This method can be used to free resources or save the final state, if necessary.
+        """
+        if self.storage:
+            self.storage.terminate()
+
 
 class Consumer(Node):
     """

@@ -22,9 +22,9 @@ def node_loader(cer_path: str) -> Tuple[Dict[str, Producer], Dict[str, Consumer]
     """
     with open(f'{cer_path}/config.json') as f:
         config = json.load(f)
-        producers_config = config['Producers']
-        consumers_config = config['Consumers']
-        prosumers_config = config['Prosumers']
+        producers_config = config.get('Producers', {})
+        consumers_config = config.get('Consumers', {})
+        prosumers_config = config.get('Prosumers', {})
         sim_start = config['Cer']['simulazione']['inizio']
         sim_end = config['Cer']['simulazione']['fine']
 
