@@ -142,6 +142,8 @@ class Cer:
         Returns:
             dict: Simulation results, including imported energy, exported energy, and TIP.
         """
+
+        # CER TABLE
         cer_table = {
             'datetime': self.nodes[self.nodes_ids[0]].date_time[0:self.time_step + 1].tolist(),
             'imported_energy': self.cer_imported_energy[0:self.time_step + 1],
@@ -154,58 +156,37 @@ class Cer:
             'tip_actual': self.cer_actual_tip[0:self.time_step + 1],
         }
 
-        # TODO: create function and apply to all nodes
-        producer_tables = {}
-        for node in self.producers.values():
-            producer_tables[node.node_id] = {
-                'datetime': node.date_time[0:self.time_step + 1].tolist(),
-                'price_export': node.price_exp[0:self.time_step + 1].tolist(),
-                'energy_produced': node.production[0:self.time_step + 1].tolist(),
+        # NODE TABLES
+        def create_node_table(node, time_step):
+            table = {
+                'datetime': node.date_time[0:time_step + 1].tolist(),
             }
+            if hasattr(node, 'price_exp'):
+                table['price_export'] = node.price_exp[0:time_step + 1].tolist()
+            if hasattr(node, 'price_imp'):
+                table['price_import'] = node.price_imp[0:time_step + 1].tolist()
+            if hasattr(node, 'production'):
+                table['energy_produced'] = node.production[0:time_step + 1].tolist()
+            if hasattr(node, 'consumption'):
+                table['energy_consumed'] = node.consumption[0:time_step + 1].tolist()
             if node.storage:
-                producer_tables[node.node_id].update({
-                    'soc_init': node.storage.soc_init_list[0:self.time_step + 1],
-                    'action_desired': node.storage.energy_desired[0:self.time_step + 1],
-                    'charge': node.storage.actual_charges[0:self.time_step + 1],
-                    'discharge': node.storage.actual_discharges[0:self.time_step + 1],
-                    'constraint_violation': node.storage.constraint_violation[0:self.time_step + 1],
-                    'soc_final': node.storage.soc_final_list[0:self.time_step + 1],
+                table.update({
+                    'soc_init': node.storage.soc_init_list[0:time_step + 1],
+                    'action_desired': node.storage.energy_desired[0:time_step + 1],
+                    'charge': node.storage.actual_charges[0:time_step + 1],
+                    'discharge': node.storage.actual_discharges[0:time_step + 1],
+                    'constraint_violation': node.storage.constraint_violation[0:time_step + 1],
+                    'soc_final': node.storage.soc_final_list[0:time_step + 1],
                 })
-            producer_tables[node.node_id].update({
-                'energy_exported': node.exported_energies[0:self.time_step + 1]
-            })
+            if hasattr(node, 'exported_energies'):
+                table['energy_exported'] = node.exported_energies[0:time_step + 1]
+            if hasattr(node, 'imported_energies'):
+                table['energy_imported'] = node.imported_energies[0:time_step + 1]
+            return table
 
-        consumer_tables = {}
-        for node in self.consumers.values():
-            consumer_tables[node.node_id] = {
-                'datetime': node.date_time[0:self.time_step + 1].tolist(),
-                'price_import': node.price_imp[0:self.time_step + 1].tolist(),
-                'energy_consumed': node.consumption[0:self.time_step + 1].tolist(),
-                'energy_imported': node.imported_energies[0:self.time_step + 1]
-            }
-
-        prosumer_tables = {}
-        for node in self.prosumers.values():
-            prosumer_tables[node.node_id] = {
-                'datetime': node.date_time[0:self.time_step + 1].tolist(),
-                'price_export': node.price_exp[0:self.time_step + 1].tolist(),
-                'price_import': node.price_imp[0:self.time_step + 1].tolist(),
-                'energy_produced': node.production[0:self.time_step + 1].tolist(),
-                'energy_consumed': node.consumption[0:self.time_step + 1].tolist(),
-            }
-            if node.storage:
-                prosumer_tables[node.node_id].update({
-                    'soc_init': node.storage.soc_init_list[0:self.time_step + 1],
-                    'action_desired': node.storage.energy_desired[0:self.time_step + 1],
-                    'charge': node.storage.actual_charges[0:self.time_step + 1],
-                    'discharge': node.storage.actual_discharges[0:self.time_step + 1],
-                    'constraint_violation': node.storage.constraint_violation[0:self.time_step + 1],
-                    'soc_final': node.storage.soc_final_list[0:self.time_step + 1],
-                })
-            prosumer_tables[node.node_id].update({
-                'imported_energy': node.imported_energies[0:self.time_step + 1],
-                'exported_energy': node.exported_energies[0:self.time_step + 1]
-                })
+        producer_tables = {node.node_id: create_node_table(node, self.time_step) for node in self.producers.values()}
+        consumer_tables = {node.node_id: create_node_table(node, self.time_step) for node in self.consumers.values()}
+        prosumer_tables = {node.node_id: create_node_table(node, self.time_step) for node in self.prosumers.values()}
 
         results = {
             'cer': cer_table,
