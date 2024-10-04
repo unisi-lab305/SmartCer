@@ -11,14 +11,14 @@ import csv
 import os
 
 
-def node_loader(cer_path: str) -> Tuple[Dict[str, Producer], Dict[str, Consumer], Dict[str, Prosumer]]:
+def node_loader(cer_path: str) -> Tuple[Dict[str, Producer], Dict[str, Consumer], Dict[str, Prosumer], int]:
     """
     Creates producer and consumer nodes from the config.json file.
 
     :param (str) cer_path: Path to the CER folder
 
-    :return (Tuple[Dict[str, Producer], Dict[str, Consumer], Dict[str, Prosumer]]:
-    Dictionaries of producer and consumer nodes.
+    :return (Tuple[Dict[str, Producer], Dict[str, Consumer], Dict[str, Prosumer], int]):
+    Dictionaries of producer and consumer nodes, and the simulation hours.
     """
     with open(f'{cer_path}/config.json') as f:
         config = json.load(f)
@@ -27,6 +27,10 @@ def node_loader(cer_path: str) -> Tuple[Dict[str, Producer], Dict[str, Consumer]
         prosumers_config = config.get('Prosumers', {})
         sim_start = config['Cer']['simulazione']['inizio']
         sim_end = config['Cer']['simulazione']['fine']
+
+    sim_step = datetime.strptime(sim_end, '%Y-%m-%d %H:%M:%S') - datetime.strptime(sim_start, '%Y-%m-%d %H:%M:%S')
+    sim_hours = sim_step.days * 24 + sim_step.seconds // 3600
+    sim_hours += 1 # include the last hour
 
     producers, consumers, prosumers = {}, {}, {}
 
@@ -72,7 +76,7 @@ def node_loader(cer_path: str) -> Tuple[Dict[str, Producer], Dict[str, Consumer]
         )
     print(f'Prosumers ({len(prosumers)}) loaded in {time.time() - start:.2f} seconds')
 
-    return producers, consumers, prosumers
+    return producers, consumers, prosumers, sim_hours
 
 
 def get_tip_coefficient(tip_th: float, tip_base: float, pi_zone: float, fi_zone: float, pnrr: float) -> float:

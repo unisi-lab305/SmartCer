@@ -24,7 +24,35 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="\data\Leather\nodes\consumers\utente_singolo_IT001E57750414.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\data\Leather\nodes\producers\impianto_cnord_IT001E57750082.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="\data\Leather\nodes\prosumers\conceria_dolmen_IT001E56249011.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\data\Leather\nodes\prosumers\toscana_fridge_IT001E57750020.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\data\Leather\nodes\prosumers\utente_famiglia_IT001E57490000.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />

@@ -1,6 +1,7 @@
 from cer_utils import *
 
 from typing import Annotated, Literal, TypeVar, Any, Tuple, Dict, OrderedDict
+import collections
 
 import gymnasium as gym
 from gymnasium import spaces
@@ -8,6 +9,7 @@ from gymnasium import spaces
 import numpy.typing as npt
 import numpy as np
 
+from datetime import datetime
 import os
 
 DType = TypeVar('DType', bound=np.generic)
@@ -21,6 +23,7 @@ class Cer(gym.Env):
 
     Attributes:
         cer_path (str): The path to the directory containing the CER data.
+        preprocessing (bool): Flag to indicate if preprocessing is enabled.
         producers (dict): Dictionary of energy producers.
         consumers (dict): Dictionary of energy consumers.
         prosumers (dict): Dictionary of prosumers (production and consumption).
@@ -40,15 +43,16 @@ class Cer(gym.Env):
         cer_actual_tip (list): List of actual TIPs.
     """
 
-    def __init__(self, cer_path: str):
+    def __init__(self, cer_path: str, preprocessing: bool = False):
         """
         Initializes an instance of the Cer class.
 
         Args:
             cer_path (str): The path to the directory containing the CER data.
+            preprocessing (bool, optional): Flag to indicate if preprocessing is enabled. Default is False.
         """
         self.cer_path = cer_path
-        self.producers, self.consumers, self.prosumers = node_loader(cer_path)
+        self.producers, self.consumers, self.prosumers, self.sim_hours = node_loader(cer_path)
         self.producers_ids = list(self.producers.keys())
         self.consumers_ids = list(self.consumers.keys())
         self.prosumers_ids = list(self.prosumers.keys())
@@ -56,24 +60,33 @@ class Cer(gym.Env):
         self.nodes_ids = list(self.nodes.keys())
         self.storage_nodes = {node_id: node for node_id, node in self.nodes.items() if node.storage}
         self.storage_nodes_ids = list(self.storage_nodes.keys())
-
-        self.time_step = 0
+        self.preprocessing = preprocessing
 
         # PREPROCESSING
         # TODO: Implement preprocessing
+        self.encoder = None
 
         # GYM ATTRIBUTES
-        self.action_space = spaces.Dict(
-            {node_id: spaces.Box(low=-1., high=1., shape=(1,), dtype=np.float32)
-             for node_id in self.storage_nodes_ids}
-        )
-        self.observation_space = spaces.Dict(
-            {node_id: spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32)
-             for node_id in self.nodes_ids}
-        )
+        # action space
+        node_action_space = spaces.Box(low=-1., high=1., shape=(1,), dtype=np.float32)
+        self.action_space = spaces.Dict({node_id: node_action_space for node_id in self.storage_nodes_ids})
+        # observation space
+        # TODO: modify according to preprocessing
+        if self.preprocessing:
+            pass
+        # TODO: parameterize Box shape
+        else:
+            cer_space = spaces.Box(low=-1., high=1., shape=(6,), dtype=np.float32)
+            node_space = spaces.Box(low=-np.inf, high=np.inf, shape=(5,), dtype=np.float32)
+            self.observation_space = spaces.Dict(
+                {'cer': cer_space, **{node_id: node_space for node_id in self.nodes_ids}}
+            )
+        # reward range
         self.reward_range = (-np.inf, np.inf)
 
         # RESET
+        self.time_step = 0
+        self.cer_date_time = self.nodes[self.nodes_ids[0]].date_time
         self.cer_exported_energy = []
         self.cer_imported_energy = []
         self.cer_energy_expense = []
@@ -83,15 +96,49 @@ class Cer(gym.Env):
         self.cer_potential_tip = []
         self.cer_actual_tip = []
 
-    def _get_obs(self):
+    def _get_obs(self, preprocessing: bool = False, horizon: int = 1) -> OrderedDict[str, ArrayN[np.float32]]:
+        """
+        Get the observation for the current time step.
+
+        Args:
+            horizon (int, optional): Number of time steps to consider in the observation. Default is 1.
+
+        Returns:
+            OrderedDict[str, NDArray]: Observation for the current time step.
+        """
+        # TODO: add horizon and remove unnecessary data
+        time_step = self.time_step % self.sim_hours  # handle _get_obs() for time steps > sim_hours
+        date_time = datetime.strptime(self.cer_date_time[time_step], '%Y-%m-%d %H:%M:%S')
+        year, month, day_type, hour = date_time.year, date_time.month, date_time.weekday(), date_time.hour
+        cer_production = sum([node.get_current_data('production', time_step)
+                              for node in {**self.producers, **self.prosumers}.values()])
+        cer_consumption = sum([node.get_current_data('consumption', time_step)
+                               for node in {**self.consumers, **self.prosumers}.values()])
+        obs = {
+            'cer': np.array(object=[year, month, day_type, hour, cer_production, cer_consumption], dtype=np.float32),
+            **{node_id: np.array(object=[
+                node.get_current_data('price_exp', time_step) if node_id not in self.consumers_ids else 0.,
+                node.get_current_data('price_imp', time_step) if node_id not in self.producers_ids else 0.,
+                node.get_current_data('production', time_step) if node_id not in self.consumers_ids else 0.,
+                node.get_current_data('consumption', time_step) if node_id not in self.producers_ids else 0.,
+                node.storage.soc if node.storage else 0.
+            ], dtype=np.float32)
+                for node_id, node in self.nodes.items()}
+        }
         # TODO: implement
-        return self.observation_space.sample()
+        if preprocessing:
+            obs *= self.encoder
+
+        return collections.OrderedDict(sorted(obs.items()))
 
     def _get_reward(self):
         # TODO: implement
         return 0.
 
-    def _get_info(self):
+    def _get_info(self) -> Dict[str, Any]:
+        """
+        Get additional information for the current time step.
+        """
         # TODO: implement
         return {}
 
@@ -188,7 +235,7 @@ class Cer(gym.Env):
 
         self._next_hour()
 
-        next_obs = self._get_obs()
+        next_obs = self._get_obs(preprocessing=self.preprocessing)
         reward = self._get_reward()
         terminated = self._is_terminal()
         truncated = terminated
@@ -212,6 +259,7 @@ class Cer(gym.Env):
         super().reset(seed=seed)
 
         self.time_step = 0
+        self.cer_date_time = self.nodes[self.nodes_ids[0]].date_time
         self.cer_exported_energy = []
         self.cer_imported_energy = []
         self.cer_energy_expense = []
@@ -237,7 +285,7 @@ class Cer(gym.Env):
 
         # CER TABLE
         cer_table = {
-            'datetime': self.nodes[self.nodes_ids[0]].date_time[0:self.time_step + 1].tolist(),
+            'datetime': self.cer_date_time[0:self.time_step + 1].tolist(),
             'imported_energy': self.cer_imported_energy[0:self.time_step + 1],
             'exported_energy': self.cer_exported_energy[0:self.time_step + 1],
             'selfconsumption': self.cer_energy_selfcons[0:self.time_step + 1],

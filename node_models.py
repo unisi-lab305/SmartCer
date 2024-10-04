@@ -121,17 +121,19 @@ class Node:
         """
         return self.data.columns.tolist()
 
-    def get_current_data(self, column: str = None) -> np.array or float:
+    def get_current_data(self, column: str = None, time_step: int = None) -> np.array or float:
         """
         Returns the current data for the current time step.
 
         Args:
             column (str, optional): Name of the column to return. If None, returns the entire row.
+            time_step (int, optional): Time index to retrieve data from. If None, returns the current time step.
 
         Returns:
             numpy array or float: Current data or specified value.
         """
-        return self.data.iloc[self.time_step].values if column is None else self.data[column][self.time_step]
+        time_step = self.time_step if time_step is None else time_step
+        return self.data.iloc[time_step].values if column is None else self.data[column][time_step]
 
     def set_storage(self, action: float) -> float:
         """
