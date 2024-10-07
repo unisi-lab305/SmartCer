@@ -1,3 +1,4 @@
+from preprocessing import *
 from cer_utils import *
 
 from typing import Annotated, Literal, TypeVar, Any, Tuple, Dict, OrderedDict
@@ -23,7 +24,6 @@ class Cer(gym.Env):
 
     Attributes:
         cer_path (str): The path to the directory containing the CER data.
-        preprocessing (bool): Flag to indicate if preprocessing is enabled.
         producers (dict): Dictionary of energy producers.
         consumers (dict): Dictionary of energy consumers.
         prosumers (dict): Dictionary of prosumers (production and consumption).
@@ -43,13 +43,12 @@ class Cer(gym.Env):
         cer_actual_tip (list): List of actual TIPs.
     """
 
-    def __init__(self, cer_path: str, preprocessing: bool = False):
+    def __init__(self, cer_path: str):
         """
         Initializes an instance of the Cer class.
 
         Args:
             cer_path (str): The path to the directory containing the CER data.
-            preprocessing (bool, optional): Flag to indicate if preprocessing is enabled. Default is False.
         """
         self.cer_path = cer_path
         self.producers, self.consumers, self.prosumers, self.sim_hours = node_loader(cer_path)
@@ -60,19 +59,6 @@ class Cer(gym.Env):
         self.nodes_ids = list(self.nodes.keys())
         self.storage_nodes = {node_id: node for node_id, node in self.nodes.items() if node.storage}
         self.storage_nodes_ids = list(self.storage_nodes.keys())
-        self.preprocessing = preprocessing
-
-        # PREPROCESSING
-        self.encoder = self._get_encoder()
-
-        # GYM ATTRIBUTES
-        # action space
-        node_action_space = spaces.Box(low=-1., high=1., shape=(1,), dtype=np.float32)
-        self.action_space = spaces.Dict({node_id: node_action_space for node_id in self.storage_nodes_ids})
-        # observation space
-        self.observation_space = self._get_obs_space()
-        # reward range
-        self.reward_range = (-np.inf, np.inf)
 
         # RESET
         self.time_step = 0
@@ -86,11 +72,88 @@ class Cer(gym.Env):
         self.cer_potential_tip = []
         self.cer_actual_tip = []
 
-    def _get_encoder(self):
-        # TODO: implement
-        raise NotImplementedError
+        # PREPROCESSING
+        self.encoder = self._get_encoder()
 
-    def _get_obs(self, preprocessing: bool = False, horizon: int = 1) -> OrderedDict[str, ArrayN[np.float32]]:
+        # GYM ATTRIBUTES
+        # action space
+        node_action_space = spaces.Box(low=-1., high=1., shape=(1,), dtype=np.float32)
+        self.action_space = spaces.Dict({node_id: node_action_space for node_id in self.storage_nodes_ids})
+        # observation space
+        self.observation_space = self._get_obs_space()
+        # reward range
+        self.reward_range = (-np.inf, np.inf)
+
+    def _get_encoder(self) -> Dict[str, Any]:
+        """
+        Get the encoder for the CER environment based on node observation spaces.
+
+        Returns:
+            Dict[str, Union[OneHotEncoding, PeriodicNormalization, MinMax, Scale]]: Encoder for the CER environment.
+        """
+        date_time_objs = [datetime.strptime(dt, '%Y-%m-%d %H:%M:%S') for dt in self.cer_date_time]
+        # get unique values for year, month and day_type and max value for hour
+        years, months, day_types = set(), set(), set()
+        for dt in date_time_objs:
+            years.add(dt.year)
+            months.add(dt.month)
+            day_types.add(dt.weekday())
+        max_hour = max(dt.hour for dt in date_time_objs)
+        # get min and max values for production, consumption
+        max_prod, min_prod = np.zeros(1), np.zeros(1)
+        min_cons, max_cons = np.zeros(1), np.zeros(1)
+        for node_id, node in self.nodes.items():
+            production_space = node.observation_space.get('production', None)
+            if isinstance(production_space, spaces.Box):
+                min_prod += production_space.low
+                max_prod += production_space.high
+            consumption_space = node.observation_space.get('consumption', None)
+            if isinstance(consumption_space, spaces.Box):
+                min_cons += consumption_space.low
+                max_cons += consumption_space.high
+
+        encoder = {
+            'cer': {
+                'year': OneHotEncoding(list(years)),
+                'month': OneHotEncoding(list(months)),
+                'day_type': OneHotEncoding(list(day_types)),
+                'hour': PeriodicNormalization(max_hour),
+                'cer_production': MinMax(min_prod, max_prod),
+                'cer_consumption': MinMax(min_cons, max_cons)
+            },
+            **{node_id: {
+                'price_exp': MinMax(node.price_exp.min(), node.price_exp.max())
+                if node_id not in self.consumers_ids else RemoveFeature(),
+                'price_imp': MinMax(node.price_imp.min(), node.price_imp.max())
+                if node_id not in self.producers_ids else RemoveFeature(),
+                'production': MinMax(node.production.min(), node.production.max())
+                if node_id not in self.consumers_ids else RemoveFeature(),
+                'consumption': MinMax(node.consumption.min(), node.consumption.max())
+                if node_id not in self.producers_ids else RemoveFeature(),
+                'soc': Scale(node.storage.capacity)
+                if node.storage else RemoveFeature()
+            } for node_id, node in self.storage_nodes.items()}
+        }
+
+        # assert observation space is compatible with encoder
+        def compare_dict_keys(dict1, dict2, path=""):
+            keys1, keys2 = set(dict1.keys()), set(dict2.keys())
+            if keys1 != keys2:
+                raise AssertionError(f'Mismatch between observation and encoder at '
+                                     f'{path or "root"}: {keys1.symmetric_difference(keys2)}')
+            # recursively check nested dictionaries
+            for key in keys1:
+                if isinstance(dict1[key], dict) and isinstance(dict2[key], dict):
+                    compare_dict_keys(dict1[key], dict2[key], path + f'{key} -> ')
+                elif isinstance(dict1[key], dict) or isinstance(dict2[key], dict):
+                    raise AssertionError(f'Key \'{key}\' is a dict in one but not the other at {path or "root"}')
+
+        obs = self._get_obs(preprocessing=False)
+        compare_dict_keys(obs, encoder)
+
+        return encoder
+
+    def _get_obs(self, preprocessing: bool = True, horizon: int = 1) -> Dict[str, Any]:
         """
         Get the observation for the current time step.
 
@@ -100,7 +163,7 @@ class Cer(gym.Env):
         Returns:
             OrderedDict[str, NDArray]: Observation for the current time step.
         """
-        # TODO: add horizon and remove unnecessary data
+        # TODO: add horizon
         time_step = self.time_step % self.sim_hours  # handle _get_obs() for time steps > sim_hours
         date_time = datetime.strptime(self.cer_date_time[time_step], '%Y-%m-%d %H:%M:%S')
         year, month, day_type, hour = date_time.year, date_time.month, date_time.weekday(), date_time.hour
@@ -114,22 +177,25 @@ class Cer(gym.Env):
                 'month': month,
                 'day_type': day_type,
                 'hour': hour,
-                'production': cer_production,
-                'consumption': cer_consumption
+                'cer_production': cer_production,
+                'cer_consumption': cer_consumption
             },
             **{node_id: {
-                'price_exp': node.get_current_data('price_exp', time_step) if node_id not in self.consumers_ids else 0.,
-                'price_imp': node.get_current_data('price_imp', time_step) if node_id not in self.producers_ids else 0.,
-                'production': node.get_current_data('production', time_step) if node_id not in self.consumers_ids else 0.,
-                'consumption': node.get_current_data('consumption', time_step) if node_id not in self.producers_ids else 0.,
+                'price_exp': node.get_current_data('price_exp', time_step)
+                if node_id not in self.consumers_ids else 0.,
+                'price_imp': node.get_current_data('price_imp', time_step)
+                if node_id not in self.producers_ids else 0.,
+                'production': node.get_current_data('production', time_step)
+                if node_id not in self.consumers_ids else 0.,
+                'consumption': node.get_current_data('consumption', time_step)
+                if node_id not in self.producers_ids else 0.,
                 'soc': node.storage.soc
+                if node.storage else 0.
             } for node_id, node in self.storage_nodes.items()}
         }
-        # TODO: implement
         if preprocessing:
-            obs *= self.encoder
+            obs = encode_obs(obs, self.encoder)
 
-        # return collections.OrderedDict(sorted(obs.items()))
         return obs
 
     def _get_obs_space(self):
@@ -150,8 +216,8 @@ class Cer(gym.Env):
         """
         Get additional information for the current time step.
         """
-        # TODO: implement
-        return {}
+        info = self._get_obs(preprocessing=False)
+        return info
 
     def _next_hour(self):
         """
@@ -175,7 +241,7 @@ class Cer(gym.Env):
         return self.time_step == len(self.nodes[self.nodes_ids[0]].date_time)
 
     def step(self, actions: OrderedDict[str, Array1[np.float32]]) \
-            -> Tuple[OrderedDict[str, ArrayN[np.float32]], float, bool, bool, Dict[str, Any], None]:
+            -> Tuple[Dict[str, Any], float, bool, bool, Dict[str, Any], None]:
         """
         Performs a simulation step, calculating the potential and actual TIP for producers, consumers, and prosumers.
         Updates exported and imported energies, self-consumption, and TIP distributions.
@@ -184,7 +250,7 @@ class Cer(gym.Env):
             actions [OrderedDict[str, NDArray[(1,), np.float32]]: Action
 
         Returns:
-            Tuple[OrderedDict[str, NDArray[(N,), np.float32]], float, bool, bool, Dict[str, Any], None]: Observation,
+            Tuple[Dict[str, Any], float, bool, bool, Dict[str, Any], None]: Observation,
             reward, termination flag,truncation flag, additional information, and done
         """
         # apply charge and discharge actions
@@ -246,17 +312,17 @@ class Cer(gym.Env):
 
         self._next_hour()
 
-        next_obs = self._get_obs(preprocessing=self.preprocessing)
+        next_obs = self._get_obs(preprocessing=True)
         reward = self._get_reward()
         terminated = self._is_terminal()
-        truncated = terminated
+        truncated = terminated  # TODO: implement early episode termination
         info = self._get_info()
         done = None
 
         return next_obs, reward, terminated, truncated, info, done
 
     def reset(self, seed: int | None = None, options: Dict[str, Any] = None) \
-            -> Tuple[OrderedDict[str, ArrayN[np.float32]], Dict[str, Any]]:
+            -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """
         Reset the environment to the initial state, resetting all nodes.
 
@@ -265,7 +331,7 @@ class Cer(gym.Env):
             options (dict, optional): Additional information to specify how the environment is reset. Default is None.
 
         Returns:
-            Tuple[OrderedDict[str, NDArray], Dict[str, Any]]: Observation and additional information
+            Tuple[Dict[str, Any], Dict[str, Any]]: Observation and additional information
         """
         super().reset(seed=seed)
 

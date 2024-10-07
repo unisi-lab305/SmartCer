@@ -1,7 +1,7 @@
 from node_models import Producer, Consumer, Prosumer
 from energy_models import Battery
 
-from typing import Tuple, Dict, Union
+from typing import Tuple, Dict, Union, Any
 from datetime import datetime
 
 import sqlite3
@@ -95,6 +95,25 @@ def node_loader(cer_path: str) -> Tuple[Dict[str, Producer], Dict[str, Consumer]
     print(f'Prosumers ({len(prosumers)}) loaded in {time.time() - start:.2f} seconds')
 
     return producers, consumers, prosumers, sim_hours
+
+
+def encode_obs(obs: Dict[str, Any], encoder: [Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Encode the observation based on the encoder.
+
+    :param (Dict[str, Any]) obs: Observation dictionary.
+    :param (Dict[str, Any]) encoder: Encoder dictionary.
+
+    :return (Dict[str, Any]): Encoded observation dictionary.
+    """
+    encoded_obs = {}
+    for key, value in obs.items():
+        # handle nested dictionaries
+        if isinstance(value, dict):
+            encoded_obs[key] = encode_obs(value, encoder[key])
+        else:
+            encoded_obs[key] = value * encoder[key]
+    return encoded_obs
 
 
 def get_tip_coefficient(tip_th: float, tip_base: float, pi_zone: float, fi_zone: float, pnrr: float) -> float:
