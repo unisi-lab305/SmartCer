@@ -63,24 +63,14 @@ class Cer(gym.Env):
         self.preprocessing = preprocessing
 
         # PREPROCESSING
-        # TODO: Implement preprocessing
-        self.encoder = None
+        self.encoder = self._get_encoder()
 
         # GYM ATTRIBUTES
         # action space
         node_action_space = spaces.Box(low=-1., high=1., shape=(1,), dtype=np.float32)
         self.action_space = spaces.Dict({node_id: node_action_space for node_id in self.storage_nodes_ids})
         # observation space
-        # TODO: modify according to preprocessing
-        if self.preprocessing:
-            pass
-        # TODO: parameterize Box shape
-        else:
-            cer_space = spaces.Box(low=-1., high=1., shape=(6,), dtype=np.float32)
-            node_space = spaces.Box(low=-np.inf, high=np.inf, shape=(5,), dtype=np.float32)
-            self.observation_space = spaces.Dict(
-                {'cer': cer_space, **{node_id: node_space for node_id in self.nodes_ids}}
-            )
+        self.observation_space = self._get_obs_space()
         # reward range
         self.reward_range = (-np.inf, np.inf)
 
@@ -95,6 +85,10 @@ class Cer(gym.Env):
         self.cer_energy_selfcons_percentage = []
         self.cer_potential_tip = []
         self.cer_actual_tip = []
+
+    def _get_encoder(self):
+        # TODO: implement
+        raise NotImplementedError
 
     def _get_obs(self, preprocessing: bool = False, horizon: int = 1) -> OrderedDict[str, ArrayN[np.float32]]:
         """
@@ -115,21 +109,38 @@ class Cer(gym.Env):
         cer_consumption = sum([node.get_current_data('consumption', time_step)
                                for node in {**self.consumers, **self.prosumers}.values()])
         obs = {
-            'cer': np.array(object=[year, month, day_type, hour, cer_production, cer_consumption], dtype=np.float32),
-            **{node_id: np.array(object=[
-                node.get_current_data('price_exp', time_step) if node_id not in self.consumers_ids else 0.,
-                node.get_current_data('price_imp', time_step) if node_id not in self.producers_ids else 0.,
-                node.get_current_data('production', time_step) if node_id not in self.consumers_ids else 0.,
-                node.get_current_data('consumption', time_step) if node_id not in self.producers_ids else 0.,
-                node.storage.soc if node.storage else 0.
-            ], dtype=np.float32)
-                for node_id, node in self.nodes.items()}
+            'cer': {
+                'year': year,
+                'month': month,
+                'day_type': day_type,
+                'hour': hour,
+                'production': cer_production,
+                'consumption': cer_consumption
+            },
+            **{node_id: {
+                'price_exp': node.get_current_data('price_exp', time_step) if node_id not in self.consumers_ids else 0.,
+                'price_imp': node.get_current_data('price_imp', time_step) if node_id not in self.producers_ids else 0.,
+                'production': node.get_current_data('production', time_step) if node_id not in self.consumers_ids else 0.,
+                'consumption': node.get_current_data('consumption', time_step) if node_id not in self.producers_ids else 0.,
+                'soc': node.storage.soc
+            } for node_id, node in self.storage_nodes.items()}
         }
         # TODO: implement
         if preprocessing:
             obs *= self.encoder
 
-        return collections.OrderedDict(sorted(obs.items()))
+        # return collections.OrderedDict(sorted(obs.items()))
+        return obs
+
+    def _get_obs_space(self):
+        # TODO: modify according to preprocessing
+        # TODO: parameterize Box shape
+        cer_space = spaces.Box(low=-1., high=1., shape=(6,), dtype=np.float32)
+        node_space = spaces.Box(low=-np.inf, high=np.inf, shape=(5,), dtype=np.float32)
+        observation_space = spaces.Dict(
+            {'cer': cer_space, **{node_id: node_space for node_id in self.nodes_ids}}
+        )
+        return observation_space
 
     def _get_reward(self):
         # TODO: implement

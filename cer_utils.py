@@ -30,7 +30,7 @@ def node_loader(cer_path: str) -> Tuple[Dict[str, Producer], Dict[str, Consumer]
 
     sim_step = datetime.strptime(sim_end, '%Y-%m-%d %H:%M:%S') - datetime.strptime(sim_start, '%Y-%m-%d %H:%M:%S')
     sim_hours = sim_step.days * 24 + sim_step.seconds // 3600
-    sim_hours += 1 # include the last hour
+    sim_hours += 1  # include the last hour
 
     producers, consumers, prosumers = {}, {}, {}
 
@@ -47,6 +47,12 @@ def node_loader(cer_path: str) -> Tuple[Dict[str, Producer], Dict[str, Consumer]
             storage=storage,
             **p_data['Photovoltaic'],
         )
+        observation_space = {
+            'price_exp': [producers[p_id].price_exp.min(), producers[p_id].price_exp.max()],
+            'production': [producers[p_id].production.min(), producers[p_id].production.max()]
+        }
+        producers[p_id].set_observation_space(observation_space)
+
     print(f'Producers ({len(producers)}) loaded in {time.time() - start:.2f} seconds')
 
     # CONSUMERS
@@ -60,6 +66,11 @@ def node_loader(cer_path: str) -> Tuple[Dict[str, Producer], Dict[str, Consumer]
             node_type=c_data['Type'],
             storage=storage
         )
+        observation_space = {
+            'price_imp': [consumers[c_id].price_imp.min(), consumers[c_id].price_imp.max()],
+            'consumption': [consumers[c_id].consumption.min(), consumers[c_id].consumption.max()]
+        }
+        consumers[c_id].set_observation_space(observation_space)
     print(f'Consumers ({len(consumers)}) loaded in {time.time() - start:.2f} seconds')
 
     # PROSUMERS
@@ -74,6 +85,13 @@ def node_loader(cer_path: str) -> Tuple[Dict[str, Producer], Dict[str, Consumer]
             storage=storage,
             **ps_data['Photovoltaic'],
         )
+        observation_space = {
+            'price_exp': [prosumers[ps_id].price_exp.min(), prosumers[ps_id].price_exp.max()],
+            'price_imp': [prosumers[ps_id].price_imp.min(), prosumers[ps_id].price_imp.max()],
+            'production': [prosumers[ps_id].production.min(), prosumers[ps_id].production.max()],
+            'consumption': [prosumers[ps_id].consumption.min(), prosumers[ps_id].consumption.max()]
+        }
+        prosumers[ps_id].set_observation_space(observation_space)
     print(f'Prosumers ({len(prosumers)}) loaded in {time.time() - start:.2f} seconds')
 
     return producers, consumers, prosumers, sim_hours

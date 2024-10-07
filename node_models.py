@@ -1,6 +1,8 @@
 from energy_models import Battery
 
+from abc import abstractmethod
 from typing import Tuple, Dict
+from gymnasium import spaces
 import pandas as pd
 import numpy as np
 import sys
@@ -50,11 +52,12 @@ class Node:
             node_type (str): Type of the node.
             storage (StorageSystem, optional): Associated storage system for the node.
         """
-        self.data_path = os.path.join(data_dir, f'{self.extract_base_name(node_id)}.csv')
+        self.data_path = os.path.join(data_dir, f'{self._extract_base_name(node_id)}.csv')
         self.sim_start, self.sim_end = sim_period
         self.node_id = node_id
         self.node_type = node_type
         self.storage = storage
+        self.observation_space = None
 
         self.time_step = 0
         self.data = pd.DataFrame()
@@ -72,10 +75,10 @@ class Node:
         self.actual_tips_prod = []
         self.actual_tips_cons = []
 
-        self.load_data()
+        self._load_data()
 
     @staticmethod
-    def extract_base_name(name: str) -> str:
+    def _extract_base_name(name: str) -> str:
         """
         Extracts the base name from a node identifier.
 
@@ -88,7 +91,7 @@ class Node:
         match = re.match(pattern='^[a-zA-Z0-9_]+(?=_\d+)', string=name)
         return match.group(0) if match else name
 
-    def load_data(self) -> None:
+    def _load_data(self) -> None:
         """
         Loads and filters data from the CSV file into the DataFrame.
 
@@ -99,6 +102,19 @@ class Node:
         filtered_data = data[(data['datetime'] >= self.sim_start) & (data['datetime'] <= self.sim_end)]
         self.data = filtered_data.reset_index(drop=True)
         self.date_time = self.data['datetime'].values
+
+    @abstractmethod
+    def set_observation_space(self, observation_space: Dict) -> None:
+        """
+        Sets the observation space for the node.
+
+        Args:
+            observation_space (Dict): minimum and maximum values for each observation.
+
+        Returns:
+            None
+        """
+        pass
 
     def get_data(self, column: str = None) -> pd.DataFrame:
         """
@@ -183,7 +199,7 @@ class Node:
         if self.storage:
             self.storage.reset()
 
-        self.load_data()
+        self._load_data()
 
     def terminate(self) -> None:
         """
@@ -220,6 +236,23 @@ class Consumer(Node):
 
         self.consumption = self.data['consumption'].values
         self.price_imp = self.data['price_imp'].values
+
+    def set_observation_space(self, observation_space: Dict) -> None:
+        """
+        Sets the observation space for the node.
+
+        Args:
+            observation_space (Dict): minimum and maximum values for each observation.
+
+        Returns:
+            None
+        """
+        price_imp = observation_space['price_imp']
+        consumption = observation_space['consumption']
+        self.observation_space = spaces.Dict({
+            'price_imp': spaces.Box(low=price_imp[0], high=price_imp[1], shape=(1,), dtype=np.float32),
+            'consumption': spaces.Box(low=consumption[0], high=consumption[1], shape=(1,), dtype=np.float32)
+        })
 
 
 class Producer(Node):
@@ -262,6 +295,23 @@ class Producer(Node):
 
         self.production = self.data['production'].values
         self.price_exp = self.data['price_exp'].values
+
+    def set_observation_space(self, observation_space: Dict) -> None:
+        """
+        Sets the observation space for the node.
+
+        Args:
+            observation_space (Dict): minimum and maximum values for each observation.
+
+        Returns:
+            None
+        """
+        price_exp = observation_space['price_exp']
+        production = observation_space['production']
+        self.observation_space = spaces.Dict({
+            'price_exp': spaces.Box(low=price_exp[0], high=price_exp[1], shape=(1,), dtype=np.float32),
+            'production': spaces.Box(low=production[0], high=production[1], shape=(1,), dtype=np.float32)
+        })
 
 
 class Prosumer(Node):
@@ -308,3 +358,24 @@ class Prosumer(Node):
         self.consumption = self.data['consumption'].values
         self.price_exp = self.data['price_exp'].values
         self.price_imp = self.data['price_imp'].values
+
+    def set_observation_space(self, observation_space: Dict) -> None:
+        """
+        Sets the observation space for the node.
+
+        Args:
+            observation_space (Dict): minimum and maximum values for each observation.
+
+        Returns:
+            None
+        """
+        price_exp = observation_space['price_exp']
+        price_imp = observation_space['price_imp']
+        production = observation_space['production']
+        consumption = observation_space['consumption']
+        self.observation_space = spaces.Dict({
+            'price_exp': spaces.Box(low=price_exp[0], high=price_exp[1], shape=(1,), dtype=np.float32),
+            'price_imp': spaces.Box(low=price_imp[0], high=price_imp[1], shape=(1,), dtype=np.float32),
+            'production': spaces.Box(low=production[0], high=production[1], shape=(1,), dtype=np.float32),
+            'consumption': spaces.Box(low=consumption[0], high=consumption[1], shape=(1,), dtype=np.float32)
+        })
