@@ -13,6 +13,45 @@ import csv
 import os
 
 
+class OHESpace(gym.Space):
+    """
+    Custom space for one-hot encoding vectors.
+
+    Example usage:
+    self.observation_space = OHESpace(size=4)
+    """
+    def __init__(self, size=None):
+        assert isinstance(size, int) and size > 0, "size must be a positive integer"
+        self.size = size
+        super().__init__(shape=(self.size,), dtype=np.float32)
+
+    def sample(self, mask=None):
+        """Generate a random one-hot vector."""
+        one_hot_vector = np.zeros(self.size, dtype=np.float32)
+        one_hot_vector[np.random.randint(self.size)] = 1
+        return one_hot_vector
+
+    def contains(self, x):
+        """Check if x is a valid one-hot encoded vector."""
+        if isinstance(x, (list, tuple, np.ndarray)):
+            number_of_zeros = list(x).count(0)
+            number_of_ones = list(x).count(1)
+            return (number_of_zeros == (self.size - 1)) and (number_of_ones == 1)
+        else:
+            return False
+
+    @property
+    def is_np_flattenable(self):
+        """Ensure this space can be flattened."""
+        return True
+
+    def __repr__(self):
+        return f'OHESpace({self.size})'
+
+    def __eq__(self, other):
+        return self.size == other.size
+
+
 def node_loader(cer_path: str) -> Tuple[Dict[str, Producer], Dict[str, Consumer], Dict[str, Prosumer], int]:
     """
     Creates producer and consumer nodes from the config.json file.

@@ -63,6 +63,13 @@ class Cer(gym.Env):
         # RESET
         self.time_step = 0
         self.cer_date_time = self.nodes[self.nodes_ids[0]].date_time
+        self.years, self.months, self.day_types, self.max_hour = set(), set(), set(), 0
+        for dt in [datetime.strptime(dt, '%Y-%m-%d %H:%M:%S') for dt in self.cer_date_time]:
+            self.years.add(dt.year)
+            self.months.add(dt.month)
+            self.day_types.add(dt.weekday())
+            if dt.hour > self.max_hour:
+                self.max_hour = dt.hour
         self.cer_exported_energy = []
         self.cer_imported_energy = []
         self.cer_energy_expense = []
@@ -94,14 +101,6 @@ class Cer(gym.Env):
         Returns:
             Dict[str, Union[OneHotEncoding, PeriodicNormalization, MinMax, Scale]]: Encoder for the CER environment.
         """
-        date_time_objs = [datetime.strptime(dt, '%Y-%m-%d %H:%M:%S') for dt in self.cer_date_time]
-        # get unique values for year, month and day_type and max value for hour
-        years, months, day_types = set(), set(), set()
-        for dt in date_time_objs:
-            years.add(dt.year)
-            months.add(dt.month)
-            day_types.add(dt.weekday())
-        max_hour = max(dt.hour for dt in date_time_objs)
         # get min and max values for production, consumption
         max_prod, min_prod = np.zeros(1), np.zeros(1)
         min_cons, max_cons = np.zeros(1), np.zeros(1)
@@ -117,10 +116,10 @@ class Cer(gym.Env):
 
         encoder = {
             'cer': {
-                'year': OneHotEncoding(list(years)),
-                'month': OneHotEncoding(list(months)),
-                'day_type': OneHotEncoding(list(day_types)),
-                'hour': PeriodicNormalization(max_hour),
+                'year': OneHotEncoding(list(self.years)),
+                'month': OneHotEncoding(list(self.months)),
+                'day_type': OneHotEncoding(list(self.day_types)),
+                'hour': PeriodicNormalization(self.max_hour),
                 'cer_production': MinMax(min_prod, max_prod),
                 'cer_consumption': MinMax(min_cons, max_cons)
             },
@@ -201,14 +200,29 @@ class Cer(gym.Env):
 
         return obs
 
-    def _get_obs_space(self):
-        # TODO: modify according to preprocessing
-        # TODO: parameterize Box shape
-        cer_space = spaces.Box(low=-1., high=1., shape=(6,), dtype=np.float32)
-        node_space = spaces.Box(low=-np.inf, high=np.inf, shape=(5,), dtype=np.float32)
-        observation_space = spaces.Dict(
-            {'cer': cer_space, **{node_id: node_space for node_id in self.nodes_ids}}
-        )
+    def _get_obs_space(self) -> spaces.Dict:
+        """
+        Get the observation space (NON Flattenable) for the CER environment.
+
+        Returns:
+            spaces.Dict: Observation space for the CER environment.
+        """
+        # TODO: add horizon and remove unnecessary features
+        observation_space = spaces.Dict({
+            'cer': spaces.Dict({
+                'year': OHESpace(size=len(self.years)),
+                'month': OHESpace(size=len(self.months)),
+                'day_type': OHESpace(size=len(self.day_types)),
+                'hour': spaces.Box(low=0, high=1, shape=(2,), dtype=np.float32),
+            }),
+            **{node_id: spaces.Dict({
+                'price_exp': spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
+                'price_imp': spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
+                'production': spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
+                'consumption': spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
+                'soc': spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
+            }) for node_id in self.storage_nodes_ids}
+        })
         return observation_space
 
     def _get_reward(self):
@@ -340,6 +354,15 @@ class Cer(gym.Env):
 
         self.time_step = 0
         self.cer_date_time = self.nodes[self.nodes_ids[0]].date_time
+        self.time_step = 0
+        self.cer_date_time = self.nodes[self.nodes_ids[0]].date_time
+        self.years, self.months, self.day_types, self.max_hour = set(), set(), set(), 0
+        for dt in [datetime.strptime(dt, '%Y-%m-%d %H:%M:%S') for dt in self.cer_date_time]:
+            self.years.add(dt.year)
+            self.months.add(dt.month)
+            self.day_types.add(dt.weekday())
+            if dt.hour > self.max_hour:
+                self.max_hour = dt.hour
         self.cer_exported_energy = []
         self.cer_imported_energy = []
         self.cer_energy_expense = []
