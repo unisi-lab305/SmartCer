@@ -4,6 +4,8 @@ from energy_models import Battery
 from typing import Tuple, Dict, Union, Any
 from datetime import datetime
 
+import gymnasium as gym
+import numpy as np
 import sqlite3
 import time
 import json
@@ -114,6 +116,26 @@ def encode_obs(obs: Dict[str, Any], encoder: [Dict[str, Any]]) -> Dict[str, Any]
         else:
             encoded_obs[key] = value * encoder[key]
     return encoded_obs
+
+
+def decode_obs(obs: Dict[str, Any], encoder: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Decode the observation based on the encoder (revert the encoding process).
+
+    :param (Dict[str, Any]) obs: Encoded observation dictionary.
+    :param (Dict[str, Any]) encoder: Encoder dictionary.
+
+    :return (Dict[str, Any]): Decoded observation dictionary.
+    """
+    decoded_obs = {}
+    for key, value in obs.items():
+        # handle nested dictionaries
+        if isinstance(value, dict):
+            decoded_obs[key] = decode_obs(value, encoder[key])
+        else:
+            decoded_obs[key] = encoder[key] / value
+    return decoded_obs
+
 
 
 def get_tip_coefficient(tip_th: float, tip_base: float, pi_zone: float, fi_zone: float, pnrr: float) -> float:

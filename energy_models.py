@@ -102,6 +102,10 @@ class Battery(StorageSystem):
         self.energy_desired, self.actual_charges, self.actual_discharges = [], [], []
         self.constraint_violation = []
 
+    def __repr__(self):
+        return f'Battery (capacity={self.capacity}, rated_power={self.rated_power}, soc_min={self.soc_min}, ' \
+                f'efficiency={self.ETA}, alfa={self.ALFA}, beta={self.BETA})'
+
     def charge(self, energy: float, production: float) -> float:
         """
         Manages both the charging and discharging of the battery based on physical constraints and production

@@ -84,6 +84,9 @@ class Cer(gym.Env):
         # reward range
         self.reward_range = (-np.inf, np.inf)
 
+    def __repr__(self):
+        return f'CER Environment: {self.cer_path}'
+
     def _get_encoder(self) -> Dict[str, Any]:
         """
         Get the encoder for the CER environment based on node observation spaces.

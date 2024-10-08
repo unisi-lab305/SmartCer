@@ -77,6 +77,9 @@ class Node:
 
         self._load_data()
 
+    def __repr__(self):
+        return f'{self.node_id} [{self.node_type}]'
+
     @staticmethod
     def _extract_base_name(name: str) -> str:
         """
