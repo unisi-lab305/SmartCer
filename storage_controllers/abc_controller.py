@@ -40,13 +40,13 @@ class StorageController(ABC):
         return f'{self.__class__.__name__} → storage_node_ids={self.storage_node_ids})'
 
     @abstractmethod
-    def choose_actions(self, observation: Dict[str, Any]) -> OrderedDict[str, Array1[np.float32]]:
+    def choose_actions(self, state: Dict[str, Any]) -> OrderedDict[str, Array1[np.float32]]:
         """
         Abstract method that selects control actions for each storage node.
         It must be implemented by subclasses.
 
         Args:
-            observation (Dict[str, Any]): Dictionary containing the current state of each storage node.
+            state (Dict[str, Any]): Dictionary containing the current state of each storage node.
 
         Returns:
             [OrderedDict[str, NDArray[(1,), np.float32]]]:

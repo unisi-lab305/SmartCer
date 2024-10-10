@@ -17,50 +17,44 @@ class StandardRBC(StorageController):
     Extends the abstract class StorageController.
     """
 
-    def choose_actions(self, observation: Dict[str, Any]) -> OrderedDict[str, Array1[np.float32]]:
+    def choose_actions(self, state: Dict[str, Any]) -> OrderedDict[str, Array1[np.float32]]:
         """
         Abstract method that selects control actions for each storage node.
         It must be implemented by subclasses.
 
         Args:
-            observation (Dict[str, Any]): Dictionary containing the current state of each storage node.
+            state (Dict[str, Any]): Dictionary containing the current state of each storage node.
 
         Returns:
             [OrderedDict[str, NDArray[(1,), np.float32]]]:
                 Ordered dictionary containing normalized control actions -> [-1,1]
         """
         actions_dict = {}
-        for node_id, obs in observation.items():
+        for node_id, s in state.items():
             if node_id != 'cer':
-
-                # features not in observation vector
-                capacity = self.storage_node[node_id].storage.capacity
-                rated_power = self.storage_node[node_id].storage.rated_power
-                soc_min = self.storage_node[node_id].storage.soc_min
-
                 if node_id in self.prosumer_ids:
-                    diff = obs['production'] - obs['consumption']
+                    diff = s['production'] - s['consumption']
                     if diff >= 0:
                         # charge with surplus
-                        charging_action = min(diff, (capacity - obs['soc']))
-                        charging_action = min(charging_action, rated_power)
-                        action = charging_action / capacity
+                        charging_action = min(diff, (s['capacity'] - s['soc']))
+                        charging_action = min(charging_action, s['rated_power'])
+                        action = charging_action / s['capacity']
                     else:
                         # discharge to meet demand
-                        discharging_action = min(-diff, max((obs['soc'] - soc_min), 0))
-                        discharging_action = min(discharging_action, rated_power)
-                        action = -discharging_action / capacity
+                        discharging_action = min(-diff, max((s['soc'] - s['soc_min']), 0))
+                        discharging_action = min(discharging_action, s['rated_power'])
+                        action = -discharging_action / s['capacity']
                 elif node_id in self.producer_ids:
-                    if obs['production'] > 0:
+                    if s['production'] > 0:
                         # charge when there is production
-                        charging_action = min(obs['production'], (capacity - obs['soc']))
-                        charging_action = min(charging_action, rated_power)
-                        action = charging_action / capacity
+                        charging_action = min(s['production'], (s['capacity'] - s['soc']))
+                        charging_action = min(charging_action, s['rated_power'])
+                        action = charging_action / s['capacity']
                     else:
                         # discharge when there is no production
-                        discharging_action = max((obs['soc'] - soc_min), 0)
-                        discharging_action = min(discharging_action, rated_power)
-                        action = -discharging_action / capacity
+                        discharging_action = max((s['soc'] - s['soc_min']), 0)
+                        discharging_action = min(discharging_action, s['rated_power'])
+                        action = -discharging_action / s['capacity']
                 else:
                     raise KeyError(f'Node {node_id} not belonging to any node category.')
 

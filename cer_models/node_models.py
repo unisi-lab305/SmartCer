@@ -27,8 +27,6 @@ class Node:
         time_step (int): Current time index.
         data (pd.DataFrame): Node data in DataFrame format.
         date_time (np.array): Array of timestamps extracted from the data.
-        imported_energies (list): List of imported energy values.
-        exported_energies (list): List of exported energy values.
         energy_expense (list): Energy costs.
         energy_revenue (list): Energy revenues.
         tip_coefficients (list): TIP coefficients.
@@ -217,6 +215,7 @@ class Consumer(Node):
     Attributes:
         consumption (np.array): Energy consumption of the node.
         price_imp (np.array): Purchase prices of energy.
+        imported_energies (list): Imported energies.
     """
 
     def __init__(self, data_dir: str,
@@ -282,6 +281,7 @@ class Producer(Node):
         pz (str): Price zone.
         production (np.array): Energy production of the node.
         price_exp (np.array): Selling prices of energy.
+        exported_energies (list): Exported energies.
     """
 
     def __init__(self, data_dir: str, sim_period: Tuple[str, str],
@@ -356,6 +356,8 @@ class Prosumer(Node):
         consumption (np.array): Energy consumption of the node.
         price_exp (np.array): Selling prices of energy.
         price_imp (np.array): Purchasing prices of energy.
+        imported_energies (list): Imported energies.
+        exported_energies (list): Exported energies.
     """
 
     def __init__(self, data_dir: str, sim_period: Tuple[str, str],

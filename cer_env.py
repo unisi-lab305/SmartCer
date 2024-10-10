@@ -246,6 +246,13 @@ class Cer(gym.Env):
         Get additional information for the current time step.
         """
         info = self._get_obs(preprocessing=False)
+        for key, value in info.items():
+            if key != 'cer':
+                value.update({
+                    'capacity': self.nodes[key].storage.capacity,
+                    'rated_power': self.nodes[key].storage.rated_power,
+                    'soc_min': self.nodes[key].storage.soc_min,
+                })
         return info
 
     def _next_hour(self):
