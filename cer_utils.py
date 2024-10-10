@@ -263,18 +263,26 @@ def save_results_to_db(db_path: str, results: Dict):
     raise NotImplementedError('Function not implemented')
 
 
-def write_csv(file_path: str, data: Dict) -> None:
+def write_csv(file_path: str, data: Dict, round_digit: int = 3) -> None:
     """
     Write data to a csv file.
     :param file_path: path to the csv file
     :param data: dictionary containing the data to write
+    :param round_digit: number of decimal digits to round the data
     :return: None
     """
     columns = list(data.keys())
+
+    # Arrotonda i dati a 3 cifre decimali solo per i numeri
+    rounded_data = {
+        col: [round(val, round_digit) if isinstance(val, (float, int)) else val for val in data[col]]
+        for col in columns
+    }
+
     with open(file_path, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow(columns)
-        writer.writerows(zip(*(data[col] for col in columns)))
+        writer.writerows(zip(*(rounded_data[col] for col in columns)))
 
 
 def save_results_to_csv(csv_path: str, results: Dict) -> None:
