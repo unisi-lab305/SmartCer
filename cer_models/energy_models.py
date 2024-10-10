@@ -129,7 +129,7 @@ class Battery(StorageSystem):
         soc_init = self.soc * (1 - self.ALFA)
 
         # Charging the battery
-        if energy > 0:
+        if energy >= 0:
             # Rated power constraint
             energy = min(energy, self.rated_power)
             # Capacity constraint
@@ -149,7 +149,7 @@ class Battery(StorageSystem):
             charging_energy = 0.
 
         self.actual_charges.append(charging_energy)
-        self.actual_discharges.append(-discharging_energy)
+        self.actual_discharges.append(np.abs(discharging_energy))
 
         constrained_energy = charging_energy + discharging_energy
         violation = np.abs(constrained_energy - energy)

@@ -59,12 +59,10 @@ class Node:
         self.storage = storage
         self.observation_space = None
 
+        # RESET
         self.time_step = 0
         self.data = pd.DataFrame()
         self.date_time = np.array([])
-
-        self.imported_energies = []
-        self.exported_energies = []
         self.energy_expense = []
         self.energy_revenue = []
         self.tip_coefficients = []
@@ -187,8 +185,6 @@ class Node:
         self.time_step = 0
         self.data = pd.DataFrame()
         self.date_time = np.array([])
-        self.imported_energies = []
-        self.exported_energies = []
         self.energy_expense = []
         self.energy_revenue = []
         self.tip_coefficients = []
@@ -240,6 +236,9 @@ class Consumer(Node):
         self.consumption = self.data['consumption'].values
         self.price_imp = self.data['price_imp'].values
 
+        # RESET
+        self.imported_energies = []
+
     def set_observation_space(self, observation_space: Dict) -> None:
         """
         Sets the observation space for the node.
@@ -256,6 +255,16 @@ class Consumer(Node):
             'price_imp': spaces.Box(low=price_imp[0], high=price_imp[1], shape=(1,), dtype=np.float32),
             'consumption': spaces.Box(low=consumption[0], high=consumption[1], shape=(1,), dtype=np.float32)
         })
+
+    def reset(self) -> None:
+        """
+        Resets the node state, restoring the time step and data to their initial state.
+
+        Returns:
+            None
+        """
+        super().reset()
+        self.imported_energies = []
 
 
 class Producer(Node):
@@ -299,6 +308,9 @@ class Producer(Node):
         self.production = self.data['production'].values
         self.price_exp = self.data['price_exp'].values
 
+        # RESET
+        self.exported_energies = []
+
     def set_observation_space(self, observation_space: Dict) -> None:
         """
         Sets the observation space for the node.
@@ -315,6 +327,16 @@ class Producer(Node):
             'price_exp': spaces.Box(low=price_exp[0], high=price_exp[1], shape=(1,), dtype=np.float32),
             'production': spaces.Box(low=production[0], high=production[1], shape=(1,), dtype=np.float32)
         })
+
+    def reset(self) -> None:
+        """
+        Resets the node state, restoring the time step and data to their initial state.
+
+        Returns:
+            None
+        """
+        super().reset()
+        self.exported_energies = []
 
 
 class Prosumer(Node):
@@ -362,6 +384,10 @@ class Prosumer(Node):
         self.price_exp = self.data['price_exp'].values
         self.price_imp = self.data['price_imp'].values
 
+        # RESET
+        self.imported_energies = []
+        self.exported_energies = []
+
     def set_observation_space(self, observation_space: Dict) -> None:
         """
         Sets the observation space for the node.
@@ -382,3 +408,14 @@ class Prosumer(Node):
             'production': spaces.Box(low=production[0], high=production[1], shape=(1,), dtype=np.float32),
             'consumption': spaces.Box(low=consumption[0], high=consumption[1], shape=(1,), dtype=np.float32)
         })
+
+    def reset(self) -> None:
+        """
+        Resets the node state, restoring the time step and data to their initial state.
+
+        Returns:
+            None
+        """
+        super().reset()
+        self.imported_energies = []
+        self.exported_energies = []

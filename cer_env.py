@@ -53,14 +53,16 @@ class Cer(gym.Env):
         reward_range (Tuple[float, float]): Reward range for the CER environment.
     """
 
-    def __init__(self, cer_path: str):
+    def __init__(self, cer_path: str, output_dir_name: str = 'simulation'):
         """
         Initializes an instance of the Cer class.
 
         Args:
             cer_path (str): The path to the directory containing the CER data.
+            output_dir_name (str, optional): The directory to save simulation results. Default is 'simulation'.
         """
         self.cer_path = cer_path
+        self.output_dir_name = output_dir_name
         self.producers, self.consumers, self.prosumers, self.sim_hours = node_loader(cer_path)
         self.producers_ids = list(self.producers.keys())
         self.consumers_ids = list(self.consumers.keys())
@@ -459,13 +461,14 @@ class Cer(gym.Env):
             save_mode (str, optional): The mode for saving results, either 'csv' or 'db'. Default is 'csv'.
         """
         # Create a directory for simulation results if it does not exist
-        if not os.path.exists(f'{self.cer_path}/simulation'):
-            os.makedirs(f'{self.cer_path}/simulation')
+        saving_path = f'{self.cer_path}/simulations/{self.output_dir_name}'
+        if not os.path.exists(saving_path):
+            os.makedirs(saving_path)
 
         assert save_mode in ['csv', 'db'], (f'Unrecognized save mode: {save_mode}. '
                                             f'Select between "csv" and "db"')
 
         if save_mode == 'csv':
-            save_results_to_csv(csv_path=f'{self.cer_path}/simulation', results=results)
+            save_results_to_csv(csv_path=saving_path, results=results)
         elif save_mode == 'db':
-            save_results_to_db(db_path=f'{self.cer_path}/simulation', results=results)
+            save_results_to_db(db_path=saving_path, results=results)
