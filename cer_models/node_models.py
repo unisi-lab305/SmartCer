@@ -1,4 +1,4 @@
-from energy_models import Battery
+from cer_models.energy_models import Battery
 
 from abc import abstractmethod
 from typing import Tuple, Dict
@@ -78,7 +78,7 @@ class Node:
         self._load_data()
 
     def __repr__(self):
-        return f'{self.node_id} [{self.node_type}]'
+        return f'{self.__class__.__name__} → {self.node_id} [{self.node_type}]'
 
     @staticmethod
     def _extract_base_name(name: str) -> str:

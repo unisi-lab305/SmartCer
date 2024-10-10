@@ -1,8 +1,7 @@
-from preprocessing import *
+from cer_preprocessing.preprocessing import *
 from cer_utils import *
 
 from typing import Annotated, Literal, TypeVar, Any, Tuple, Dict, OrderedDict
-import collections
 
 import gymnasium as gym
 from gymnasium import spaces
@@ -25,14 +24,21 @@ class Cer(gym.Env):
     Attributes:
         cer_path (str): The path to the directory containing the CER data.
         producers (dict): Dictionary of energy producers.
-        consumers (dict): Dictionary of energy consumers.
-        prosumers (dict): Dictionary of prosumers (production and consumption).
-        nodes (dict): Dictionary of all CER nodes.
         producers_ids (list): List of IDs of producers.
+        consumers (dict): Dictionary of energy consumers.
         consumers_ids (list): List of IDs of consumers.
+        prosumers (dict): Dictionary of prosumers (production and consumption).
         prosumers_ids (list): List of IDs of prosumers.
+        nodes (dict): Dictionary of all CER nodes.
         nodes_ids (list): List of IDs of all nodes.
+        storage_nodes (dict): Dictionary of storage nodes.
+        storage_nodes_ids (list): List of IDs of storage nodes.
         time_step (int): Index of the current time step of the simulation.
+        cer_date_time (list): List of date-time strings for the simulation.
+        years (set): Set of years in the simulation.
+        months (set): Set of months in the simulation.
+        day_types (set): Set of day types in the simulation.
+        max_hour (int): Maximum hour in the simulation.
         cer_exported_energy (list): List of energies exported by the CER.
         cer_imported_energy (list): List of energies imported by the CER.
         cer_energy_expense (list): List of energy expenses of the CER.
@@ -41,6 +47,10 @@ class Cer(gym.Env):
         cer_energy_selfcons_percentage (list): Percentages of CER self-consumption.
         cer_potential_tip (list): List of potential TIPs.
         cer_actual_tip (list): List of actual TIPs.
+        encoder (dict): Encoder for the CER environment.
+        action_space (spaces.Dict): Action space for the CER environment.
+        observation_space (spaces.Dict): Observation space for the CER environment.
+        reward_range (Tuple[float, float]): Reward range for the CER environment.
     """
 
     def __init__(self, cer_path: str):
@@ -92,7 +102,7 @@ class Cer(gym.Env):
         self.reward_range = (-np.inf, np.inf)
 
     def __repr__(self):
-        return f'CER Environment: {self.cer_path}'
+        return f'CER Environment: {self.__class__.__name__} → {self.cer_path}'
 
     def _get_encoder(self) -> Dict[str, Any]:
         """
