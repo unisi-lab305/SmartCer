@@ -90,6 +90,9 @@ class Cer(gym.Env):
         self.cer_energy_selfcons_percentage = []
         self.cer_potential_tip = []
         self.cer_actual_tip = []
+        self.rewards = []
+        self.penalties = []
+        self.reward_signals = []
 
         # PREPROCESSING
         self.encoder = self._get_encoder()
@@ -102,6 +105,7 @@ class Cer(gym.Env):
         self.observation_space = self._get_obs_space()
         # reward range
         self.reward_range = (-np.inf, np.inf)
+        self.reward = reward_loader(cer_path, self.nodes)
 
     def __repr__(self):
         return f'CER Environment: {self.__class__.__name__} → {self.cer_path}'
@@ -237,9 +241,40 @@ class Cer(gym.Env):
         })
         return observation_space
 
-    def _get_reward(self):
-        # TODO: implement
-        return 0.
+    def _get_reward(self) -> Dict[str, float] or float:
+        """
+        Get the reward for the current time step.
+        Could be a single reward or a dictionary of rewards for each node, depending on the reward type.
+
+        Returns:
+            Dict[str, float] or float: Reward for the current time step.
+        """
+        if self.reward.type == 'energy':
+            reward = self.reward.compute_energy_reward(time_step=self.time_step)
+        elif self.reward.type == 'cost':
+            reward = self.reward.compute_cost_reward(tip=self.cer_actual_tip[self.time_step], time_step=self.time_step)
+        else:
+            raise ValueError(f'Invalid reward type: {self.reward.type}. Available types: [energy, cost]')
+
+        if self.reward.add_penalty:
+            penalty = self.reward.compute_penalty(time_step=self.time_step)
+        else:
+            penalty = {} if self.reward.single_agent else 0
+
+        self.rewards.append(reward)
+        self.penalties.append(penalty)
+        # TODO: scale rewards before subtracting penalty
+        if isinstance(reward, dict) and isinstance(penalty, dict):
+            rewards_signals = {}
+            for node_id in reward.keys():
+                if penalty:
+                    reward_signals = reward[node_id] - penalty[node_id]
+                    rewards_signals[node_id] = reward_signals
+                else:
+                    rewards_signals[node_id] = reward[node_id]
+            return rewards_signals
+        else:
+            return reward - penalty
 
     def _get_info(self) -> Dict[str, Any]:
         """
@@ -277,7 +312,7 @@ class Cer(gym.Env):
         return self.time_step == len(self.nodes[self.nodes_ids[0]].date_time)
 
     def step(self, actions: OrderedDict[str, Array1[np.float32]]) \
-            -> Tuple[Dict[str, Any], float, bool, bool, Dict[str, Any], None]:
+            -> Tuple[Dict[str, Any], Dict[str, float] or float, bool, bool or None, Dict[str, Any], None]:
         """
         Performs a simulation step, calculating the potential and actual TIP for producers, consumers, and prosumers.
         Updates exported and imported energies, self-consumption, and TIP distributions.
@@ -286,8 +321,8 @@ class Cer(gym.Env):
             actions [OrderedDict[str, NDArray[(1,), np.float32]]: Action
 
         Returns:
-            Tuple[Dict[str, Any], float, bool, bool, Dict[str, Any], None]: Observation,
-            reward, termination flag,truncation flag, additional information, and done
+            Tuple[Dict[str, Any], Dict[str, float] or float, bool, bool or None, Dict[str, Any], None]:
+                  Observation, reward, termination flag, truncation flag, additional information, and done
         """
         # apply charge and discharge actions
         if actions:
@@ -298,25 +333,28 @@ class Cer(gym.Env):
         for producer in self.producers.values():
             energy_produced = producer.get_current_data('production')
             energy_consumed = 0.
-            energy_exported, energy_imported = get_energy_trade(producer, energy_produced, energy_consumed)
+            energy_exported, energy_imported, trade = get_energy_trade(producer, energy_produced, energy_consumed)
             assert energy_imported >= 0, (f'Energy arbitrage constraint violation -> '
                                           f'{producer.node_id} imported {energy_imported:.2f} kWh')
             producer.exported_energies.append(energy_exported)
+            producer.energy_trade.append(trade)
             set_tip_and_costs(producer, energy_exported, energy_imported, is_producer=True)
 
         for consumer in self.consumers.values():
             energy_imported = consumer.get_current_data('consumption')
             consumer.imported_energies.append(energy_imported)
+            consumer.energy_trade.append(-energy_imported)
             set_tip_and_costs(consumer, 0, energy_imported, is_consumer=True)
 
         for prosumer in self.prosumers.values():
             energy_produced = prosumer.get_current_data('production')
             energy_consumed = prosumer.get_current_data('consumption')
-            energy_exported, energy_imported = get_energy_trade(prosumer, energy_produced, energy_consumed)
+            energy_exported, energy_imported, trade = get_energy_trade(prosumer, energy_produced, energy_consumed)
             assert energy_imported * energy_exported == 0, f'Simultaneous import-export -> ' \
                                                            f'imp: {energy_imported:.2f}, exp: {energy_exported:.2f}'
             prosumer.exported_energies.append(energy_exported)
             prosumer.imported_energies.append(energy_imported)
+            prosumer.energy_trade.append(trade)
             set_tip_and_costs(prosumer, energy_exported, energy_imported)
 
         # CER imported and exported energy
@@ -346,16 +384,20 @@ class Cer(gym.Env):
         self.cer_actual_tip.append(
             self.cer_energy_selfcons_percentage[self.time_step] * self.cer_potential_tip[self.time_step])
 
+        # reward for the current time step
+        reward = self._get_reward()
+        truncated = None  # TODO: add truncation flag for too many constraint violations
+
+        # update time step
         self._next_hour()
 
+        # next observation, termination flag, next info
         next_obs = self._get_obs(preprocessing=True)
-        reward = self._get_reward()
         terminated = self._is_terminal()
-        truncated = terminated  # TODO: implement early episode termination
-        info = self._get_info()
+        next_info = self._get_info()
         done = None
 
-        return next_obs, reward, terminated, truncated, info, done
+        return next_obs, reward, terminated, truncated, next_info, done
 
     def reset(self, seed: int | None = None, options: Dict[str, Any] = None) \
             -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -373,8 +415,6 @@ class Cer(gym.Env):
 
         self.time_step = 0
         self.cer_date_time = self.nodes[self.nodes_ids[0]].date_time
-        self.time_step = 0
-        self.cer_date_time = self.nodes[self.nodes_ids[0]].date_time
         self.years, self.months, self.day_types, self.max_hour = set(), set(), set(), 0
         for dt in [datetime.strptime(dt, '%Y-%m-%d %H:%M:%S') for dt in self.cer_date_time]:
             self.years.add(dt.year)
@@ -390,6 +430,9 @@ class Cer(gym.Env):
         self.cer_energy_selfcons_percentage = []
         self.cer_potential_tip = []
         self.cer_actual_tip = []
+        self.rewards = []
+        self.penalties = []
+        self.reward_signals = []
         for node in self.nodes.values():
             node.reset()
 
@@ -444,6 +487,12 @@ class Cer(gym.Env):
                 table['energy_exported'] = node.exported_energies[0:time_step + 1]
             if hasattr(node, 'imported_energies'):
                 table['energy_imported'] = node.imported_energies[0:time_step + 1]
+            if hasattr(node, 'energy_trade'):
+                table['energy_trade'] = node.energy_trade[0:time_step + 1]
+            if hasattr(node, 'energy_expense'):
+                table['energy_expense'] = node.energy_expense[0:time_step + 1]
+            if hasattr(node, 'energy_revenue'):
+                table['energy_revenue'] = node.energy_revenue[0:time_step + 1]
             return table
 
         producer_tables = {node.node_id: _create_node_table(node, self.time_step) for node in self.producers.values()}

@@ -3,126 +3,119 @@
   <component name="CsvFileAttributes">
     <option name="attributeMap">
       <map>
-        <entry key="\data\Dolmen\nodes\prosumers\conceria_dolmen_IT001E56249011.csv">
+        <entry key="\cer_data\Dolmen\simulations\rbc\cer_results.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
-        <entry key="\data\Dolmen\simulation\prosumers\conceria_dolmen_IT001E56249011_results.csv">
+        <entry key="\cer_data\Dolmen\simulations\rbc\prosumers\conceria_dolmen_results.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
-        <entry key="\data\Leather\nodes\consumers\cartotecnica_IT001E56111011.csv">
+        <entry key="\cer_data\Dolmen\simulations\sim\cer_results.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
-        <entry key="\data\Leather\nodes\consumers\utente_coppia_IT001E57490097.csv">
+        <entry key="\cer_data\Dolmen\simulations\sim\prosumers\conceria_dolmen_results.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
-        <entry key="\data\Leather\nodes\consumers\utente_singolo_IT001E57750414.csv">
+        <entry key="\cer_data\Leather\nodes\producers\impianto.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
-        <entry key="\data\Leather\nodes\producers\impianto_cnord_IT001E57750082.csv">
+        <entry key="\cer_data\Leather\nodes\prosumers\utente_famiglia_storage.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
-        <entry key="\data\Leather\nodes\prosumers\conceria_dolmen_IT001E56249011.csv">
+        <entry key="\cer_data\Leather\simulations\rbc\cer_results.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
-        <entry key="\data\Leather\nodes\prosumers\toscana_fridge_IT001E57750020.csv">
+        <entry key="\cer_data\Leather\simulations\rbc\consumers\cartotecnica_results.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
-        <entry key="\data\Leather\nodes\prosumers\utente_famiglia_IT001E57490000.csv">
+        <entry key="\cer_data\Leather\simulations\rbc\consumers\utente_coppia_results.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
-        <entry key="\data\Leather\simulation\cer_results.csv">
+        <entry key="\cer_data\Leather\simulations\rbc\consumers\utente_singolo_1_results.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
-        <entry key="\data\Leather\simulation\consumers\cartotecnica_IT001E56111011_results.csv">
+        <entry key="\cer_data\Leather\simulations\rbc\producers\impianto_results.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
-        <entry key="\data\Leather\simulation\consumers\utente_coppia_IT001E57490097_results.csv">
+        <entry key="\cer_data\Leather\simulations\rbc\producers\impianto_storage_results.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
-        <entry key="\data\Leather\simulation\consumers\utente_singolo_IT001E57750414_1_results.csv">
+        <entry key="\cer_data\Leather\simulations\rbc\prosumers\conceria_dolmen_results.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
-        <entry key="\data\Leather\simulation\consumers\utente_singolo_IT001E57750414_2_results.csv">
+        <entry key="\cer_data\Leather\simulations\sim\cer_results.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
-        <entry key="\data\Leather\simulation\producers\impianto_cnord_IT001E57750082_results.csv">
+        <entry key="\cer_data\Leather\simulations\sim\consumers\cartotecnica_results.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
-        <entry key="\data\Leather\simulation\prosumers\conceria_dolmen_IT001E56249011_results.csv">
+        <entry key="\cer_data\Leather\simulations\sim\producers\impianto_results.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
-        <entry key="\data\Leather\simulation\prosumers\toscana_fridge_IT001E57750020_results.csv">
-          <value>
-            <Attribute>
-              <option name="separator" value="," />
-            </Attribute>
-          </value>
-        </entry>
-        <entry key="\data\Leather\simulation\prosumers\utente_famiglia_IT001E57490000_results.csv">
+        <entry key="\cer_data\Leather\simulations\sim\prosumers\conceria_dolmen_results.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />

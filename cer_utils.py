@@ -1,5 +1,6 @@
 from cer_models.node_models import Producer, Consumer, Prosumer
 from cer_models.energy_models import Battery
+from cer_rewards import Reward
 
 from typing import Tuple, Dict, Union, Any
 from datetime import datetime
@@ -137,6 +138,26 @@ def node_loader(cer_path: str) -> Tuple[Dict[str, Producer], Dict[str, Consumer]
     return producers, consumers, prosumers, sim_hours
 
 
+def reward_loader(cer_path: str, nodes: Dict[str, Union[Producer, Consumer, Prosumer]]) -> Reward:
+    """
+    Creates Reward object from the config.json file.
+
+    :param (str) cer_path: Path to the CER folder
+    :param (Dict[str, Union[Producer, Consumer, Prosumer]]) nodes: Dictionary of Cer nodes.
+
+    :raises KeyError: If the config.json file does not contain a 'reward' key.
+
+    :return: (Reward) Reward object.
+    """
+    with open(f'{cer_path}/config.json') as f:
+        config = json.load(f)
+        try:
+            reward_params = config['Cer']['reward']
+            return Reward(nodes=nodes, **reward_params)
+        except KeyError as e:
+            raise KeyError(f'reward_loader → {e}')
+
+
 def encode_obs(obs: Dict[str, Any], encoder: [Dict[str, Any]]) -> Dict[str, Any]:
     """
     Encode the observation based on the encoder.
@@ -175,7 +196,6 @@ def decode_obs(obs: Dict[str, Any], encoder: Dict[str, Any]) -> Dict[str, Any]:
     return decoded_obs
 
 
-
 def get_tip_coefficient(tip_th: float, tip_base: float, pi_zone: float, fi_zone: float, pnrr: float) -> float:
     """
     Calculates the TIP of the u-th unit [€/kWh].
@@ -197,14 +217,14 @@ def get_tip_coefficient(tip_th: float, tip_base: float, pi_zone: float, fi_zone:
 
 
 def get_energy_trade(node: Union[Prosumer, Consumer, Producer],
-                     energy_produced: float, energy_consumed: float) -> Tuple[float, float]:
+                     energy_produced: float, energy_consumed: float) -> Tuple[float, float, float]:
     """
     Calculates the energy exported and imported by the node.
     :param (Node) node: Node object
     :param (float) energy_produced: energy produced by the node
     :param (float) energy_consumed: energy consumed by the node
 
-    :return (Tuple[float, float]): energy exported and imported by the node
+    :return (Tuple[float, float, float]): energy exported and imported by the node
     """
     if node.storage:
         energy_trade = (energy_produced + node.storage.actual_discharges[node.time_step] -
@@ -217,7 +237,7 @@ def get_energy_trade(node: Union[Prosumer, Consumer, Producer],
     else:
         energy_exported = 0.
         energy_imported = -energy_trade
-    return energy_exported, energy_imported
+    return energy_exported, energy_imported, energy_trade
 
 
 def set_tip_and_costs(node: Union[Prosumer, Consumer, Producer], energy_exported: float, energy_imported: float,
