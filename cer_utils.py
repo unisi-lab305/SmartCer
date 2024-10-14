@@ -1,8 +1,8 @@
 from cer_models.node_models import Producer, Consumer, Prosumer
 from cer_models.energy_models import Battery
-from cer_rewards import Reward
+from cer_rewards import RewardScaler
 
-from typing import Tuple, Dict, Union, Any
+from typing import Tuple, Dict, List, Union, Any
 from datetime import datetime
 
 import gymnasium as gym
@@ -139,6 +139,32 @@ def node_loader(cer_path: str, cer_config: Dict) \
     print(f'Prosumers ({len(prosumers)}) loaded in {time.time() - start:.2f} seconds')
 
     return producers, consumers, prosumers, sim_hours
+
+
+def scaler_loader(single_agent_reward, storage_node_ids: List[str], **scaler_config) \
+        -> Union[RewardScaler, Dict[str, RewardScaler]]:
+    """
+    Load the reward scaler based on the configuration.
+
+    :param (bool) single_agent_reward: Flag indicating if the reward is for a single agent.
+    :param (List[str]) storage_node_ids: List of storage node IDs.
+    :param (Dict) scaler_config: Reward scaler configuration.
+
+    :return: RewardScaler object or dictionary of RewardScaler objects.
+    """
+    if single_agent_reward:
+        reward_scaler_dict = {}
+        for node_id in storage_node_ids:
+            reward_scaler_dict[node_id] = RewardScaler(
+                clip_min=scaler_config.get('clip_min', None),
+                clip_max=scaler_config.get('clip_max', None),
+                reset_interval=scaler_config.get('reset_interval', None))
+        return reward_scaler_dict
+    else:
+        return RewardScaler(
+            clip_min=scaler_config.get('clip_min', None),
+            clip_max=scaler_config.get('clip_max', None),
+            reset_interval=scaler_config.get('reset_interval', None))
 
 
 def encode_obs(obs: Dict[str, Any], encoder: [Dict[str, Any]]) -> Dict[str, Any]:

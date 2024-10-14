@@ -1,4 +1,5 @@
 from cer_preprocessing.preprocessing import *
+from cer_rewards import *
 from cer_utils import *
 
 from typing import Annotated, Literal, TypeVar, Any, Tuple, Dict, OrderedDict
@@ -24,6 +25,8 @@ class Cer(gym.Env):
     Attributes:
         cer_path (str): The path to the directory containing the CER data.
         cer_config (dict): Configuration for the CER environment.
+        reward_config (dict): Configuration for the reward system.
+        scaler_config (dict): Configuration for the reward scaler.
         producers (dict): Dictionary of energy producers.
         producers_ids (list): List of IDs of producers.
         consumers (dict): Dictionary of energy consumers.
@@ -61,11 +64,12 @@ class Cer(gym.Env):
         Args:
             cer_path (str): The path to the directory containing the CER data.
             cer_config (dict): Configuration for the CER environment.
-            simulation_dir_name (str, optional): The directory to save simulation results. Default is 'simulation'.
         """
         self.cer_path = cer_path
         self.cer_config = cer_config
-        self.producers, self.consumers, self.prosumers, self.sim_hours = node_loader(cer_path, cer_config)
+        self.reward_config = cer_config['reward']
+        self.producers, self.consumers, self.prosumers, self.sim_hours = node_loader(
+            cer_path=cer_path, cer_config=cer_config)
         self.producers_ids = list(self.producers.keys())
         self.consumers_ids = list(self.consumers.keys())
         self.prosumers_ids = list(self.prosumers.keys())
@@ -105,9 +109,14 @@ class Cer(gym.Env):
         self.action_space = spaces.Dict({node_id: node_action_space for node_id in self.storage_nodes_ids})
         # observation space
         self.observation_space = self._get_obs_space()
-        # reward range
+        # reward
         self.reward_range = (-np.inf, np.inf)
-        self.reward = Reward(nodes=self.nodes, **self.cer_config['reward'])
+        self.reward = Reward(
+            nodes=self.nodes, **self.reward_config)
+        self.reward_scaler = scaler_loader(
+            single_agent_reward=self.reward_config['single_agent'],
+            storage_node_ids=self.storage_nodes_ids,
+            **self.reward_config['scaler'])
 
     def __repr__(self):
         return f'CER Environment: {self.__class__.__name__} → {self.cer_path}'
@@ -263,24 +272,41 @@ class Cer(gym.Env):
         else:
             penalty = {} if self.reward.single_agent else 0
 
-        self.rewards.append(reward)
-        self.penalties.append(penalty)
-        # TODO: scale rewards before subtracting penalty
+        # dict of reward signals for each node
         if isinstance(reward, dict) and isinstance(penalty, dict):
             rewards_signals = {}
             for node_id in reward.keys():
+                # scale reward
+                if self.reward_config['scaler']['apply']:
+                    self.reward_scaler[node_id].update(reward[node_id])
+                    reward[node_id] = self.reward_scaler[node_id].scale(reward[node_id])
+                # add penalty
                 if penalty:
-                    reward_signals = reward[node_id] - penalty[node_id]
-                    rewards_signals[node_id] = reward_signals
+                    reward_signal = reward[node_id] - penalty[node_id]
+                    rewards_signals[node_id] = reward_signal
                 else:
                     rewards_signals[node_id] = reward[node_id]
+            # update lists
+            self.rewards.append(reward)
+            self.penalties.append(penalty)
+            self.reward_signals.append(rewards_signals)
             return rewards_signals
+        # collective reward signal
         else:
-            return reward - penalty
+            if self.reward_config['scaler']['apply']:
+                self.reward_scaler.update(reward)
+                reward = self.reward_scaler.scale(reward)
+            reward -= penalty
+            # update lists
+            self.rewards.append(reward)
+            self.penalties.append(penalty)
+            self.reward_signals.append(reward)
+            return reward
 
     def _get_info(self) -> Dict[str, Any]:
         """
         Get additional information for the current time step.
+        Info = Observation + additional storage information (capacity, rated power, soc_min).
         """
         info = self._get_obs(preprocessing=False)
         for key, value in info.items():

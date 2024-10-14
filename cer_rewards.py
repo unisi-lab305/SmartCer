@@ -1,6 +1,6 @@
 from cer_models.node_models import Producer, Consumer, Prosumer
 
-from typing import Dict, Tuple, Union
+from typing import Dict, Union
 
 import numpy as np
 
@@ -45,10 +45,10 @@ class Reward:
 
     def compute_penalty(self, time_step: int) -> Dict[str, float] or float:
         """
-        Compute penalty for constraint violation. The penalty is normalized by the storage capacity and multiplied by
-        the penalty coefficient.
+        Compute penalty for constraint violation ∈ [0,1]. The penalty is normalized by the storage capacity and
+        multiplied by the penalty coefficient.
         For single-agent reward, returns a dictionary of penalties for each node. For collective reward, returns the
-        sum of all penalties.
+        mean of all penalties.
 
         Args:
             time_step (int): Current time step.
@@ -56,15 +56,17 @@ class Reward:
         Returns:
             Dict[str, float] or float: Penalty(s) for the current time step.
         """
-        penalties = {}
+        penalties, scaled_penalties = {}, {}
         for node_id, node in self.nodes.items():
             if node.storage:
                 normalized_penalty = node.storage.constraint_violation[time_step] / node.storage.capacity
-                penalties[node_id] = self.penalty_coefficient * normalized_penalty
+                penalties[node_id] = normalized_penalty
+                scaled_penalties[node_id] = normalized_penalty * self.penalty_coefficient
+
         if self.single_agent:
-            return penalties
+            return scaled_penalties
         else:
-            return sum(penalties.values())
+            return np.mean(list(penalties.values())) * self.penalty_coefficient
 
     def compute_energy_reward(self, time_step: int) -> Dict[str, float] or float:
         """
@@ -95,7 +97,7 @@ class Reward:
 
     def compute_cost_reward(self, tip: float, time_step: int) -> Dict[str, float] or float:
         """
-        Cost reward: reward=energy_revenue - energy_expense.
+        Cost reward: reward=energy_revenue - energy_expense (+ tip for collective reward).
         For single-agent reward, returns a dictionary of rewards for each node.
         For collective reward, returns the sum of all rewards plus the total incentive (tip).
 
@@ -137,13 +139,13 @@ class RewardScaler:
         step_counter (int): Counter for the number of updates since the last reset.
     """
 
-    def __init__(self, clip_min=-1.0, clip_max=1.0, reset_interval=None):
+    def __init__(self, clip_min: float = None, clip_max: float = None, reset_interval: int = None):
         """
         Initializes the RewardScaler.
 
         Args:
-            clip_min (float): Minimum value for clipping the scaled reward. Default is -1.0.
-            clip_max (float): Maximum value for clipping the scaled reward. Default is 1.0.
+            clip_min (float, optional): Minimum value for clipping the scaled reward. Default is None.
+            clip_max (float, optional): Maximum value for clipping the scaled reward. Default is None.
             reset_interval (int, optional): Number of steps after which to reset statistics (None to disable resetting).
         """
         self.mean = 0.0
@@ -155,7 +157,10 @@ class RewardScaler:
         self.reset_interval = reset_interval
         self.step_counter = 0
 
-    def update(self, reward):
+    def __repr__(self):
+        return f'{self.__class__.__name__} → mean: {self.mean}, variance: {self.get_variance()}, count: {self.count}'
+
+    def update(self, reward: float):
         """
         Updates the running mean and variance with a new reward.
 
@@ -184,7 +189,7 @@ class RewardScaler:
             return float('inf')  # Variance is undefined for count < 2
         return self.M2 / self.count
 
-    def scale(self, reward):
+    def scale(self, reward: float):
         """
         Scales and clips the given reward.
 
@@ -196,9 +201,9 @@ class RewardScaler:
         """
         std = (self.get_variance()) ** 0.5   # Calculate standard deviation
         scaled_reward = (reward - self.mean) / (std + self.epsilon)  # Standardize reward
-
-        # Apply clipping to the scaled reward
-        scaled_reward = max(self.clip_min, min(scaled_reward, self.clip_max))
+        # apply clipping to the scaled reward
+        if self.clip_min is not None and self.clip_max is not None:
+            scaled_reward = max(self.clip_min, min(scaled_reward, self.clip_max))
         return scaled_reward
 
     def reset(self):
