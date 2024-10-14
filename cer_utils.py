@@ -52,11 +52,13 @@ class OHESpace(gym.Space):
         return self.size == other.size
 
 
-def node_loader(cer_path: str) -> Tuple[Dict[str, Producer], Dict[str, Consumer], Dict[str, Prosumer], int]:
+def node_loader(cer_path: str, cer_config: Dict) \
+        -> Tuple[Dict[str, Producer], Dict[str, Consumer], Dict[str, Prosumer], int]:
     """
     Creates producer and consumer nodes from the config.json file.
 
     :param (str) cer_path: Path to the CER folder
+    :param (Dict) cer_config: Configuration dictionary.
 
     :return (Tuple[Dict[str, Producer], Dict[str, Consumer], Dict[str, Prosumer], int]):
     Dictionaries of producer and consumer nodes, and the simulation hours.
@@ -66,8 +68,9 @@ def node_loader(cer_path: str) -> Tuple[Dict[str, Producer], Dict[str, Consumer]
         producers_config = config.get('Producers', {})
         consumers_config = config.get('Consumers', {})
         prosumers_config = config.get('Prosumers', {})
-        sim_start = config['Cer']['simulazione']['inizio']
-        sim_end = config['Cer']['simulazione']['fine']
+
+    sim_start = cer_config['simulation']['start']
+    sim_end = cer_config['simulation']['end']
 
     sim_step = datetime.strptime(sim_end, '%Y-%m-%d %H:%M:%S') - datetime.strptime(sim_start, '%Y-%m-%d %H:%M:%S')
     sim_hours = sim_step.days * 24 + sim_step.seconds // 3600
@@ -136,26 +139,6 @@ def node_loader(cer_path: str) -> Tuple[Dict[str, Producer], Dict[str, Consumer]
     print(f'Prosumers ({len(prosumers)}) loaded in {time.time() - start:.2f} seconds')
 
     return producers, consumers, prosumers, sim_hours
-
-
-def reward_loader(cer_path: str, nodes: Dict[str, Union[Producer, Consumer, Prosumer]]) -> Reward:
-    """
-    Creates Reward object from the config.json file.
-
-    :param (str) cer_path: Path to the CER folder
-    :param (Dict[str, Union[Producer, Consumer, Prosumer]]) nodes: Dictionary of Cer nodes.
-
-    :raises KeyError: If the config.json file does not contain a 'reward' key.
-
-    :return: (Reward) Reward object.
-    """
-    with open(f'{cer_path}/config.json') as f:
-        config = json.load(f)
-        try:
-            reward_params = config['Cer']['reward']
-            return Reward(nodes=nodes, **reward_params)
-        except KeyError as e:
-            raise KeyError(f'reward_loader → {e}')
 
 
 def encode_obs(obs: Dict[str, Any], encoder: [Dict[str, Any]]) -> Dict[str, Any]:

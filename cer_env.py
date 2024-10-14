@@ -23,6 +23,7 @@ class Cer(gym.Env):
 
     Attributes:
         cer_path (str): The path to the directory containing the CER data.
+        cer_config (dict): Configuration for the CER environment.
         producers (dict): Dictionary of energy producers.
         producers_ids (list): List of IDs of producers.
         consumers (dict): Dictionary of energy consumers.
@@ -53,17 +54,18 @@ class Cer(gym.Env):
         reward_range (Tuple[float, float]): Reward range for the CER environment.
     """
 
-    def __init__(self, cer_path: str, output_dir_name: str = 'simulation'):
+    def __init__(self, cer_path: str, cer_config: Dict):
         """
         Initializes an instance of the Cer class.
 
         Args:
             cer_path (str): The path to the directory containing the CER data.
-            output_dir_name (str, optional): The directory to save simulation results. Default is 'simulation'.
+            cer_config (dict): Configuration for the CER environment.
+            simulation_dir_name (str, optional): The directory to save simulation results. Default is 'simulation'.
         """
         self.cer_path = cer_path
-        self.output_dir_name = output_dir_name
-        self.producers, self.consumers, self.prosumers, self.sim_hours = node_loader(cer_path)
+        self.cer_config = cer_config
+        self.producers, self.consumers, self.prosumers, self.sim_hours = node_loader(cer_path, cer_config)
         self.producers_ids = list(self.producers.keys())
         self.consumers_ids = list(self.consumers.keys())
         self.prosumers_ids = list(self.prosumers.keys())
@@ -105,7 +107,7 @@ class Cer(gym.Env):
         self.observation_space = self._get_obs_space()
         # reward range
         self.reward_range = (-np.inf, np.inf)
-        self.reward = reward_loader(cer_path, self.nodes)
+        self.reward = Reward(nodes=self.nodes, **self.cer_config['reward'])
 
     def __repr__(self):
         return f'CER Environment: {self.__class__.__name__} → {self.cer_path}'
@@ -517,7 +519,7 @@ class Cer(gym.Env):
             save_mode (str, optional): The mode for saving results, either 'csv' or 'db'. Default is 'csv'.
         """
         # Create a directory for simulation results if it does not exist
-        saving_path = f'{self.cer_path}/simulations/{self.output_dir_name}'
+        saving_path = f'{self.cer_path}/simulations/{self.cer_config["simulation"]["output_dir"]}'
         if not os.path.exists(saving_path):
             os.makedirs(saving_path)
 
