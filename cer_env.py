@@ -1,4 +1,5 @@
 from cer_preprocessing.preprocessing import *
+from cer_metrics.scores import *
 from cer_rewards import *
 from cer_utils import *
 
@@ -545,7 +546,7 @@ class Cer(gym.Env):
             output_dir (str): The directory where the results will be saved.
             save_mode (str, optional): The mode for saving results, either 'csv' or 'db'. Default is 'csv'.
         """
-        # Create a directory for simulation results if it does not exist
+        # create a directory for simulation results if it does not exist
         saving_path = f'{self.cer_path}/simulations/{output_dir}'
         if not os.path.exists(saving_path):
             os.makedirs(saving_path)
@@ -553,7 +554,12 @@ class Cer(gym.Env):
         assert save_mode in ['csv', 'db'], (f'Unrecognized save mode: {save_mode}. '
                                             f'Select between "csv" and "db"')
 
+        # save csv(s) results
         if save_mode == 'csv':
             save_results_to_csv(csv_path=saving_path, results=results)
         elif save_mode == 'db':
             save_results_to_db(db_path=saving_path, results=results)
+
+        # save json kpi(s) summary
+        kpis = compute_kpis(results_cer=results['cer'])
+        save_kpis_to_json(json_path=saving_path, kpis=kpis)

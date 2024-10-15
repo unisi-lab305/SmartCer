@@ -1,5 +1,6 @@
 from cer_models.node_models import Producer, Consumer, Prosumer
 from cer_models.energy_models import Battery
+from cer_metrics.scores import compute_kpis
 from cer_rewards import RewardScaler
 
 from typing import Tuple, Dict, List, Union, Any
@@ -338,3 +339,14 @@ def save_results_to_csv(csv_path: str, results: Dict) -> None:
     os.makedirs(f'{csv_path}/prosumers', exist_ok=True)
     for prosumer_id, prosumer_data in results['prosumers'].items():
         write_csv(f'{csv_path}/prosumers/{prosumer_id}_results.csv', prosumer_data)
+
+
+def save_kpis_to_json(json_path: str, kpis: Dict) -> None:
+    """
+    Saves the KPIs to a JSON file.
+
+    :param (str) json_path: Path to the JSON file.
+    :param (Dict) kpis: Key Performance Indicators.
+    """
+    with open(f'{json_path}/kpi.json', 'w') as f:
+        json.dump(kpis, f, indent=4)
