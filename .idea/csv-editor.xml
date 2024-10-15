@@ -3,35 +3,14 @@
   <component name="CsvFileAttributes">
     <option name="attributeMap">
       <map>
-        <entry key="\cer_data\Dolmen\simulations\rbc\cer_results.csv">
-          <value>
-            <Attribute>
-              <option name="separator" value="," />
-            </Attribute>
-          </value>
-        </entry>
-        <entry key="\cer_data\Dolmen\simulations\rbc\prosumers\conceria_dolmen_results.csv">
-          <value>
-            <Attribute>
-              <option name="separator" value="," />
-            </Attribute>
-          </value>
-        </entry>
-        <entry key="\cer_data\Dolmen\simulations\sim\cer_results.csv">
-          <value>
-            <Attribute>
-              <option name="separator" value="," />
-            </Attribute>
-          </value>
-        </entry>
-        <entry key="\cer_data\Dolmen\simulations\sim\prosumers\conceria_dolmen_results.csv">
-          <value>
-            <Attribute>
-              <option name="separator" value="," />
-            </Attribute>
-          </value>
-        </entry>
         <entry key="\cer_data\Leather\nodes\prosumers\utente_famiglia_storage.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\cer_data\Leather\simulations\baseline_no_storage\cer_results.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
@@ -102,48 +81,6 @@
           </value>
         </entry>
         <entry key="\cer_data\Leather\simulations\baseline_rbc\prosumers\utente_famiglia_storage_results.csv">
-          <value>
-            <Attribute>
-              <option name="separator" value="," />
-            </Attribute>
-          </value>
-        </entry>
-        <entry key="\cer_data\Leather\simulations\sim\cer_results.csv">
-          <value>
-            <Attribute>
-              <option name="separator" value="," />
-            </Attribute>
-          </value>
-        </entry>
-        <entry key="\cer_data\Leather\simulations\sim\consumers\cartotecnica_results.csv">
-          <value>
-            <Attribute>
-              <option name="separator" value="," />
-            </Attribute>
-          </value>
-        </entry>
-        <entry key="\cer_data\Leather\simulations\sim\producers\pv_2_results.csv">
-          <value>
-            <Attribute>
-              <option name="separator" value="," />
-            </Attribute>
-          </value>
-        </entry>
-        <entry key="\cer_data\Leather\simulations\sim\producers\pv_results.csv">
-          <value>
-            <Attribute>
-              <option name="separator" value="," />
-            </Attribute>
-          </value>
-        </entry>
-        <entry key="\cer_data\Leather\simulations\sim\producers\pv_storage_results.csv">
-          <value>
-            <Attribute>
-              <option name="separator" value="," />
-            </Attribute>
-          </value>
-        </entry>
-        <entry key="\cer_data\Leather\simulations\sim\prosumers\conceria_dolmen_results.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
