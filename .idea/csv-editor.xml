@@ -31,13 +31,6 @@
             </Attribute>
           </value>
         </entry>
-        <entry key="\cer_data\Leather\nodes\producers\impianto.csv">
-          <value>
-            <Attribute>
-              <option name="separator" value="," />
-            </Attribute>
-          </value>
-        </entry>
         <entry key="\cer_data\Leather\nodes\prosumers\utente_famiglia_storage.csv">
           <value>
             <Attribute>
@@ -45,49 +38,70 @@
             </Attribute>
           </value>
         </entry>
-        <entry key="\cer_data\Leather\simulations\rbc\cer_results.csv">
+        <entry key="\cer_data\Leather\simulations\baseline_no_storage\prosumers\conceria_dolmen_results.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
-        <entry key="\cer_data\Leather\simulations\rbc\consumers\cartotecnica_results.csv">
+        <entry key="\cer_data\Leather\simulations\baseline_random\cer_results.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
-        <entry key="\cer_data\Leather\simulations\rbc\consumers\utente_coppia_results.csv">
+        <entry key="\cer_data\Leather\simulations\baseline_random\consumers\cartotecnica_results.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
-        <entry key="\cer_data\Leather\simulations\rbc\consumers\utente_singolo_1_results.csv">
+        <entry key="\cer_data\Leather\simulations\baseline_random\consumers\utente_coppia_results.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
-        <entry key="\cer_data\Leather\simulations\rbc\producers\impianto_results.csv">
+        <entry key="\cer_data\Leather\simulations\baseline_random\consumers\utente_singolo_1_results.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
-        <entry key="\cer_data\Leather\simulations\rbc\producers\impianto_storage_results.csv">
+        <entry key="\cer_data\Leather\simulations\baseline_random\consumers\utente_singolo_2_results.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
-        <entry key="\cer_data\Leather\simulations\rbc\prosumers\conceria_dolmen_results.csv">
+        <entry key="\cer_data\Leather\simulations\baseline_random\producers\pv_storage_results.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\cer_data\Leather\simulations\baseline_rbc\prosumers\conceria_dolmen_results.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\cer_data\Leather\simulations\baseline_rbc\prosumers\utente_famiglia_results.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\cer_data\Leather\simulations\baseline_rbc\prosumers\utente_famiglia_storage_results.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
@@ -108,7 +122,21 @@
             </Attribute>
           </value>
         </entry>
-        <entry key="\cer_data\Leather\simulations\sim\producers\impianto_results.csv">
+        <entry key="\cer_data\Leather\simulations\sim\producers\pv_2_results.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\cer_data\Leather\simulations\sim\producers\pv_results.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\cer_data\Leather\simulations\sim\producers\pv_storage_results.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />

@@ -536,16 +536,17 @@ class Cer(gym.Env):
 
         return results
 
-    def save_results(self, results: dict, save_mode: str = 'csv'):
+    def save_results(self, results: dict, output_dir: str, save_mode: str = 'csv'):
         """
         Saves the simulation results in a structured format.
 
         Args:
             results (dict): Simulation results, including imported, exported energy, and TIP.
+            output_dir (str): The directory where the results will be saved.
             save_mode (str, optional): The mode for saving results, either 'csv' or 'db'. Default is 'csv'.
         """
         # Create a directory for simulation results if it does not exist
-        saving_path = f'{self.cer_path}/simulations/{self.cer_config["simulation"]["output_dir"]}'
+        saving_path = f'{self.cer_path}/simulations/{output_dir}'
         if not os.path.exists(saving_path):
             os.makedirs(saving_path)
 
