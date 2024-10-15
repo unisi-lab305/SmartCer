@@ -562,4 +562,7 @@ class Cer(gym.Env):
 
         # save json kpi(s) summary
         kpis = compute_kpis(results_cer=results['cer'])
-        save_kpis_to_json(json_path=saving_path, kpis=kpis)
+        save_dict_to_json(json_path=saving_path, json_name='kpi.json', dict_to_save=kpis)
+
+        # save json config file
+        save_dict_to_json(json_path=saving_path, json_name='sim_config.json', dict_to_save=self.cer_config)

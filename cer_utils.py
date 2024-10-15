@@ -341,12 +341,13 @@ def save_results_to_csv(csv_path: str, results: Dict) -> None:
         write_csv(f'{csv_path}/prosumers/{prosumer_id}_results.csv', prosumer_data)
 
 
-def save_kpis_to_json(json_path: str, kpis: Dict) -> None:
+def save_dict_to_json(json_path: str, json_name: str, dict_to_save: Dict) -> None:
     """
-    Saves the KPIs to a JSON file.
+    Saves dictionary to a JSON file.
 
     :param (str) json_path: Path to the JSON file.
-    :param (Dict) kpis: Key Performance Indicators.
+    :param (str) json_name: Name of the JSON file.
+    :param (Dict) dict_to_save: Dictionary to save.
     """
-    with open(f'{json_path}/kpi.json', 'w') as f:
-        json.dump(kpis, f, indent=4)
+    with open(f'{json_path}/{json_name}', 'w') as f:
+        json.dump(dict_to_save, f, indent=4)
