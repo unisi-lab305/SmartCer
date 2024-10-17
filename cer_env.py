@@ -1,3 +1,4 @@
+from storage_controllers.rbc_controller import StandardRBC
 from cer_preprocessing.preprocessing import *
 from cer_metrics.scores import *
 from cer_reward.reward import *
@@ -12,6 +13,7 @@ import numpy.typing as npt
 import numpy as np
 
 from datetime import datetime
+from tqdm import tqdm
 import os
 
 DType = TypeVar('DType', bound=np.generic)
@@ -576,3 +578,47 @@ class Cer(gym.Env):
 
         # save json config file
         save_dict_to_json(json_path=saving_path, json_name='sim_config.json', dict_to_save=self.cer_config)
+
+    def compute_baselines(self, no_storage: bool = True, rbc: bool = None) -> None:
+        """
+        Compute baseline results for the CER environment.
+        Results are saved in the CER data folder.
+
+        Args:
+            no_storage (bool, optional): If True, the baseline with no storage is computed. Default is True.
+            rbc (bool, optional): If True, the baseline with the Rule-Based Controller is computed. Default is None.
+
+        Returns:
+            None
+        """
+        seed = self.cer_config['simulation']['seed']
+        if no_storage:
+            actions = {node_id: np.array(object=[0.], dtype=np.float32) for node_id in self.storage_nodes_ids}
+            actions = collections.OrderedDict(sorted(actions.items()))
+
+            results = {}
+            _, _ = self.reset(seed=seed)
+            for _ in tqdm(range(self.sim_hours), desc="No Storage Simulation Progress"):
+                _, _, terminated, truncated, _, _ = self.step(actions)
+                done = terminated or truncated
+                if done:
+                    results = self.get_sim_results()
+            self.save_results(results=results, output_dir='baseline_no_storage', save_mode='csv')
+
+        if rbc:
+            rbc_controller = StandardRBC(
+                storage_node=self.storage_nodes, producer_ids=self.producers_ids, prosumer_ids=self.prosumers_ids)
+
+            results = {}
+            _, info = self.reset(seed=seed)
+            for _ in tqdm(range(self.sim_hours), desc="RBC Simulation Progress"):
+                actions = rbc_controller.choose_actions(info)
+                _, _, terminated, truncated, new_info, _ = self.step(actions)
+                done = terminated or truncated
+                if done:
+                    results = self.get_sim_results()
+                else:
+                    info = new_info
+            self.save_results(results=results, output_dir='baseline_rbc', save_mode='csv')
+
+        self.reset()
