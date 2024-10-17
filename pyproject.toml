@@ -5,13 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "SmartCer"
 version = "0.1.0"
-description = "Gymnasium environment for the Renewable Energy Community (CER)"
-authors = ["Leonardo Guiducci"]
-authors-email = ["leonardo.guiducci@unisi.it"]
-license = "MIT"
+description = "Gymnasium environment for Renewable Energy Community (CER)"
+authors = [{ name = "Leonardo Guiducci", email = "leonardo.guiducci@unisi.it" }]
+license = { text = "MIT" }
 readme = "README.md"
 keywords = ["gym", "renewable-energy", "environment", "reinforcement-learning"]
-categories = ["Environment :: OpenAI Gym"]
 requires-python = ">=3.10"
 dependencies = [
     "gymnasium>=0.29.1",
@@ -29,7 +27,11 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence"
 ]
 
+[tool.setuptools]
+packages = ["smartcer"]
+include-package-data = true
+
 [project.urls]
 homepage = "https://github.com/unisi-lab305/SmartCer"
 repository = "https://github.com/unisi-lab305/SmartCer"
-documentation = ""
+documentation = "https://github.com/unisi-lab305/SmartCer/blob/main/README.md"

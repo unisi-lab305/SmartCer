@@ -1,4 +1,4 @@
-from cer_models.node_models import Producer, Prosumer
+from smartcer.cer_models.node_models import Producer, Prosumer
 from abc import ABC, abstractmethod
 
 from typing import Annotated, Any, Literal, TypeVar, List, Dict, OrderedDict, Union

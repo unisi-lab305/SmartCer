@@ -1,8 +1,8 @@
-from storage_controllers.rbc_controller import StandardRBC
-from cer_preprocessing.preprocessing import *
-from cer_metrics.scores import *
-from cer_reward.reward import *
-from cer_utils import *
+from smartcer.storage_controllers.rbc_controller import StandardRBC
+from smartcer.cer_preprocessing.preprocessing import *
+from smartcer.cer_metrics.scores import *
+from smartcer.cer_reward.reward import *
+from smartcer.cer_utils import *
 
 from typing import Annotated, Literal, TypeVar, Any, Tuple, Dict, OrderedDict
 
@@ -21,7 +21,7 @@ Array1 = Annotated[npt.NDArray[DType], Literal[1]]
 ArrayN = Annotated[npt.NDArray[DType], Literal['N']]
 
 
-class Cer(gym.Env):
+class SmartCer(gym.Env):
     """
     Class for the simulation of a Renewable Energy Community (CER).
 
@@ -67,8 +67,9 @@ class Cer(gym.Env):
     """
 
     def __init__(self, cer_path: str, cer_config: Dict):
+
         """
-        Initializes an instance of the Cer class.
+        Initializes an instance of the SmartCer class.
 
         Args:
             cer_path (str): The path to the directory containing the CER data.

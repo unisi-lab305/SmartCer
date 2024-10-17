@@ -1,4 +1,4 @@
-from cer_models.energy_models import Battery
+from smartcer.cer_models.energy_models import Battery
 
 from abc import abstractmethod
 from typing import Tuple, Dict

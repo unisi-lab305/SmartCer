@@ -1,4 +1,4 @@
-from storage_controllers.abc_controller import StorageController
+from smartcer.storage_controllers.abc_controller import StorageController
 
 from typing import Annotated, Any, Literal, TypeVar, Dict, OrderedDict
 

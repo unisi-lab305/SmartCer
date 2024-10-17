@@ -1,4 +1,4 @@
-from cer_models.node_models import Producer, Consumer, Prosumer
+from smartcer.cer_models.node_models import Producer, Consumer, Prosumer
 
 from typing import Dict, Union
 
@@ -10,7 +10,7 @@ class Reward:
     Class for reward computation. Implements different reward types.
 
     Attributes:
-        nodes (Dict[str, Union[Producer, Consumer, Prosumer]]): Dictionary of Cer nodes.
+        nodes (Dict[str, Union[Producer, Consumer, Prosumer]]): Dictionary of SmartCer nodes.
         type (str): Type of reward function.
         single_agent (bool): Flag for single-agent or multi-agent reward computation.
         add_penalty (bool): Flag for adding penalty to the reward.
