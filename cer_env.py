@@ -24,38 +24,44 @@ class Cer(gym.Env):
     Class for the simulation of a Renewable Energy Community (CER).
 
     Attributes:
-        cer_path (str): The path to the directory containing the CER data.
-        cer_config (dict): Configuration for the CER environment.
-        reward_config (dict): Configuration for the reward system.
-        scaler_config (dict): Configuration for the reward scaler.
-        producers (dict): Dictionary of energy producers.
-        producers_ids (list): List of IDs of producers.
-        consumers (dict): Dictionary of energy consumers.
-        consumers_ids (list): List of IDs of consumers.
-        prosumers (dict): Dictionary of prosumers (production and consumption).
-        prosumers_ids (list): List of IDs of prosumers.
-        nodes (dict): Dictionary of all CER nodes.
-        nodes_ids (list): List of IDs of all nodes.
-        storage_nodes (dict): Dictionary of storage nodes.
-        storage_nodes_ids (list): List of IDs of storage nodes.
-        time_step (int): Index of the current time step of the simulation.
-        cer_date_time (list): List of date-time strings for the simulation.
-        years (set): Set of years in the simulation.
-        months (set): Set of months in the simulation.
-        day_types (set): Set of day types in the simulation.
-        max_hour (int): Maximum hour in the simulation.
-        cer_exported_energy (list): List of energies exported by the CER.
-        cer_imported_energy (list): List of energies imported by the CER.
-        cer_energy_expense (list): List of energy expenses of the CER.
-        cer_energy_revenue (list): List of energy revenues of the CER.
-        cer_energy_selfcons (list): List of CER self-consumed energy.
-        cer_energy_selfcons_percentage (list): Percentages of CER self-consumption.
-        cer_potential_tip (list): List of potential TIPs.
-        cer_actual_tip (list): List of actual TIPs.
-        encoder (dict): Encoder for the CER environment.
-        action_space (spaces.Dict): Action space for the CER environment.
-        observation_space (spaces.Dict): Observation space for the CER environment.
-        reward_range (Tuple[float, float]): Reward range for the CER environment.
+        CER Environment:
+            cer_path (str): The path to the directory containing the CER data.
+            cer_config (dict): Configuration for the CER environment.
+            reward_config (dict): Configuration for the reward system.
+            producers (dict): Dictionary of energy producers.
+            producers_ids (list): List of IDs of producers.
+            consumers (dict): Dictionary of energy consumers.
+            consumers_ids (list): List of IDs of consumers.
+            prosumers (dict): Dictionary of prosumers (production and consumption).
+            prosumers_ids (list): List of IDs of prosumers.
+            nodes (dict): Dictionary of all CER nodes.
+            nodes_ids (list): List of IDs of all nodes.
+            storage_nodes (dict): Dictionary of storage nodes.
+            storage_nodes_ids (list): List of IDs of storage nodes.
+        Methods:
+            flatten_observation (staticmethod): Method to flatten the observation space.
+            create_action_dict (staticmethod): Method to create an action dictionary.
+        Attributes to be reset:
+            time_step (int): Index of the current time step of the simulation.
+            cer_date_time (list): List of date-time strings for the simulation.
+            years (set): Set of years in the simulation.
+            months (set): Set of months in the simulation.
+            day_types (set): Set of day types in the simulation.
+            max_hour (int): Maximum hour in the simulation.
+            cer_exported_energy (list): List of energies exported by the CER.
+            cer_imported_energy (list): List of energies imported by the CER.
+            cer_energy_expense (list): List of energy expenses of the CER.
+            cer_energy_revenue (list): List of energy revenues of the CER.
+            cer_energy_selfcons (list): List of CER self-consumed energy.
+            cer_energy_selfcons_percentage (list): Percentages of CER self-consumption.
+            cer_potential_tip (list): List of potential TIPs.
+            cer_actual_tip (list): List of actual TIPs.
+        Encoder:
+            encoder (dict): Encoder for the CER environment.
+        Gym Attributes:
+            action_space (spaces.Dict): Action space for the CER environment.
+            observation_space (spaces.Dict): Observation space for the CER environment.
+            reward_range (Tuple[float, float]): Reward range for the CER environment.
     """
 
     def __init__(self, cer_path: str, cer_config: Dict):
@@ -78,6 +84,10 @@ class Cer(gym.Env):
         self.nodes_ids = list(self.nodes.keys())
         self.storage_nodes = {node_id: node for node_id, node in self.nodes.items() if node.storage}
         self.storage_nodes_ids = list(self.storage_nodes.keys())
+
+        # METHODS
+        self.flatten_observation = staticmethod(flatten_observation)
+        self.create_action_dict = staticmethod(create_action_dict)
 
         # RESET
         self.time_step = 0
@@ -235,7 +245,7 @@ class Cer(gym.Env):
         Returns:
             spaces.Dict: Observation space for the CER environment.
         """
-        # TODO: add horizon and remove unnecessary features
+        # TODO: add horizon and remove unnecessary features (obs_space does not match obs dim)
         observation_space = spaces.Dict({
             'cer': spaces.Dict({
                 'year': OHESpace(size=len(self.years)),
@@ -287,7 +297,7 @@ class Cer(gym.Env):
                     rewards_signals[node_id] = reward_signal
                 else:
                     rewards_signals[node_id] = reward[node_id]
-            # update lists
+            # update list attributes
             self.rewards.append(reward)
             self.penalties.append(penalty)
             self.reward_signals.append(rewards_signals)
@@ -298,7 +308,7 @@ class Cer(gym.Env):
                 self.reward_scaler.update(reward)
                 reward = self.reward_scaler.scale(reward)
             reward -= penalty
-            # update lists
+            # update list attributes
             self.rewards.append(reward)
             self.penalties.append(penalty)
             self.reward_signals.append(reward)

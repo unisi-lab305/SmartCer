@@ -1,17 +1,25 @@
 from cer_models.node_models import Producer, Consumer, Prosumer
 from cer_models.energy_models import Battery
-from cer_metrics.scores import compute_kpis
 from cer_rewards import RewardScaler
 
-from typing import Tuple, Dict, List, Union, Any
+from typing import Annotated, Any, Dict, List, Literal, OrderedDict,Tuple, TypeVar, Union
 from datetime import datetime
 
-import gymnasium as gym
-import numpy as np
+import collections
 import time
 import json
 import csv
 import os
+
+import gymnasium as gym
+
+import numpy.typing as npt
+import numpy as np
+
+
+DType = TypeVar('DType', bound=np.generic)
+Array1 = Annotated[npt.NDArray[DType], Literal[1]]
+ArrayN = Annotated[npt.NDArray[DType], Literal['N']]
 
 
 class OHESpace(gym.Space):
@@ -204,6 +212,43 @@ def decode_obs(obs: Dict[str, Any], encoder: Dict[str, Any]) -> Dict[str, Any]:
         else:
             decoded_obs[key] = encoder[key] / value
     return decoded_obs
+
+
+def flatten_observation(obs: Dict[str, Any]) -> ArrayN[np.float32]:
+    """
+    Flatten the observation dictionary and return a 1D array.
+
+    :param (Dict[str, Any]) obs: Observation dictionary.
+
+    :return (ArrayN[np.float32]): Flattened observation array.
+    """
+
+    values = []
+    for sub_dict in obs.values():
+        for value in sub_dict.values():
+            if value is not None:
+                values.extend(np.nditer(value, flags=['refs_ok']))
+    return np.array(values, dtype=np.float32)
+
+
+def create_action_dict(actions_array: ArrayN or List, storage_node_ids: List[str]) \
+        -> OrderedDict[str, Array1[np.float32]]:
+    """
+    Create an ordered dictionary of actions for each storage node.
+
+    :param (ArrayN) actions_array: Array/List of actions.
+    :param (List[str]) storage_node_ids: List of storage node IDs.
+
+    :return (OrderedDict[str, Array1[np.float32]]): Ordered dictionary of actions.
+    """
+    assert len(actions_array) == len(storage_node_ids), \
+        f'Number of actions ({len(actions_array)}) does not match the number of storage nodes ({len(storage_node_ids)})'
+    actions = {}
+    for action, node_id in zip(actions_array, sorted(storage_node_ids)):
+        actions[node_id] = np.array(object=[action], dtype=np.float32)
+
+    ordered_actions = collections.OrderedDict(sorted(actions.items()))
+    return ordered_actions
 
 
 def get_tip_coefficient(tip_th: float, tip_base: float, pi_zone: float, fi_zone: float, pnrr: float) -> float:
