@@ -1,6 +1,8 @@
-from energy_models import Battery
+from smartcer.cer_models.energy_models import Battery
 
+from abc import abstractmethod
 from typing import Tuple, Dict
+from gymnasium import spaces
 import pandas as pd
 import numpy as np
 import sys
@@ -25,8 +27,6 @@ class Node:
         time_step (int): Current time index.
         data (pd.DataFrame): Node data in DataFrame format.
         date_time (np.array): Array of timestamps extracted from the data.
-        imported_energies (list): List of imported energy values.
-        exported_energies (list): List of exported energy values.
         energy_expense (list): Energy costs.
         energy_revenue (list): Energy revenues.
         tip_coefficients (list): TIP coefficients.
@@ -50,18 +50,17 @@ class Node:
             node_type (str): Type of the node.
             storage (StorageSystem, optional): Associated storage system for the node.
         """
-        self.data_path = os.path.join(data_dir, f'{self.extract_base_name(node_id)}.csv')
+        self.data_path = os.path.join(data_dir, f'{self._extract_base_name(node_id)}.csv')
         self.sim_start, self.sim_end = sim_period
         self.node_id = node_id
         self.node_type = node_type
         self.storage = storage
+        self.observation_space = None
 
+        # RESET
         self.time_step = 0
         self.data = pd.DataFrame()
         self.date_time = np.array([])
-
-        self.imported_energies = []
-        self.exported_energies = []
         self.energy_expense = []
         self.energy_revenue = []
         self.tip_coefficients = []
@@ -72,10 +71,13 @@ class Node:
         self.actual_tips_prod = []
         self.actual_tips_cons = []
 
-        self.load_data()
+        self._load_data()
+
+    def __repr__(self):
+        return f'{self.__class__.__name__} → {self.node_id} [{self.node_type}]'
 
     @staticmethod
-    def extract_base_name(name: str) -> str:
+    def _extract_base_name(name: str) -> str:
         """
         Extracts the base name from a node identifier.
 
@@ -88,7 +90,7 @@ class Node:
         match = re.match(pattern='^[a-zA-Z0-9_]+(?=_\d+)', string=name)
         return match.group(0) if match else name
 
-    def load_data(self) -> None:
+    def _load_data(self) -> None:
         """
         Loads and filters data from the CSV file into the DataFrame.
 
@@ -99,6 +101,19 @@ class Node:
         filtered_data = data[(data['datetime'] >= self.sim_start) & (data['datetime'] <= self.sim_end)]
         self.data = filtered_data.reset_index(drop=True)
         self.date_time = self.data['datetime'].values
+
+    @abstractmethod
+    def set_observation_space(self, observation_space: Dict) -> None:
+        """
+        Sets the observation space for the node.
+
+        Args:
+            observation_space (Dict): minimum and maximum values for each observation.
+
+        Returns:
+            None
+        """
+        pass
 
     def get_data(self, column: str = None) -> pd.DataFrame:
         """
@@ -121,17 +136,19 @@ class Node:
         """
         return self.data.columns.tolist()
 
-    def get_current_data(self, column: str = None) -> np.array or float:
+    def get_current_data(self, column: str = None, time_step: int = None) -> np.array or float:
         """
         Returns the current data for the current time step.
 
         Args:
             column (str, optional): Name of the column to return. If None, returns the entire row.
+            time_step (int, optional): Time index to retrieve data from. If None, returns the current time step.
 
         Returns:
             numpy array or float: Current data or specified value.
         """
-        return self.data.iloc[self.time_step].values if column is None else self.data[column][self.time_step]
+        time_step = self.time_step if time_step is None else time_step
+        return self.data.iloc[time_step].values if column is None else self.data[column][time_step]
 
     def set_storage(self, action: float) -> float:
         """
@@ -166,8 +183,6 @@ class Node:
         self.time_step = 0
         self.data = pd.DataFrame()
         self.date_time = np.array([])
-        self.imported_energies = []
-        self.exported_energies = []
         self.energy_expense = []
         self.energy_revenue = []
         self.tip_coefficients = []
@@ -181,7 +196,14 @@ class Node:
         if self.storage:
             self.storage.reset()
 
-        self.load_data()
+        self._load_data()
+
+    def terminate(self) -> None:
+        """
+        This method can be used to free resources or save the final state, if necessary.
+        """
+        if self.storage:
+            self.storage.terminate()
 
 
 class Consumer(Node):
@@ -193,6 +215,7 @@ class Consumer(Node):
     Attributes:
         consumption (np.array): Energy consumption of the node.
         price_imp (np.array): Purchase prices of energy.
+        imported_energies (list): Imported energies.
     """
 
     def __init__(self, data_dir: str,
@@ -212,6 +235,38 @@ class Consumer(Node):
         self.consumption = self.data['consumption'].values
         self.price_imp = self.data['price_imp'].values
 
+        # RESET
+        self.imported_energies = []
+        self.energy_trade = []
+
+    def set_observation_space(self, observation_space: Dict) -> None:
+        """
+        Sets the observation space for the node.
+
+        Args:
+            observation_space (Dict): minimum and maximum values for each observation.
+
+        Returns:
+            None
+        """
+        price_imp = observation_space['price_imp']
+        consumption = observation_space['consumption']
+        self.observation_space = spaces.Dict({
+            'price_imp': spaces.Box(low=price_imp[0], high=price_imp[1], shape=(1,), dtype=np.float32),
+            'consumption': spaces.Box(low=consumption[0], high=consumption[1], shape=(1,), dtype=np.float32)
+        })
+
+    def reset(self) -> None:
+        """
+        Resets the node state, restoring the time step and data to their initial state.
+
+        Returns:
+            None
+        """
+        super().reset()
+        self.imported_energies = []
+        self.energy_trade = []
+
 
 class Producer(Node):
     """
@@ -228,6 +283,7 @@ class Producer(Node):
         pz (str): Price zone.
         production (np.array): Energy production of the node.
         price_exp (np.array): Selling prices of energy.
+        exported_energies (list): Exported energies.
     """
 
     def __init__(self, data_dir: str, sim_period: Tuple[str, str],
@@ -254,6 +310,38 @@ class Producer(Node):
         self.production = self.data['production'].values
         self.price_exp = self.data['price_exp'].values
 
+        # RESET
+        self.exported_energies = []
+        self.energy_trade = []
+
+    def set_observation_space(self, observation_space: Dict) -> None:
+        """
+        Sets the observation space for the node.
+
+        Args:
+            observation_space (Dict): minimum and maximum values for each observation.
+
+        Returns:
+            None
+        """
+        price_exp = observation_space['price_exp']
+        production = observation_space['production']
+        self.observation_space = spaces.Dict({
+            'price_exp': spaces.Box(low=price_exp[0], high=price_exp[1], shape=(1,), dtype=np.float32),
+            'production': spaces.Box(low=production[0], high=production[1], shape=(1,), dtype=np.float32)
+        })
+
+    def reset(self) -> None:
+        """
+        Resets the node state, restoring the time step and data to their initial state.
+
+        Returns:
+            None
+        """
+        super().reset()
+        self.exported_energies = []
+        self.energy_trade = []
+
 
 class Prosumer(Node):
     """
@@ -272,6 +360,8 @@ class Prosumer(Node):
         consumption (np.array): Energy consumption of the node.
         price_exp (np.array): Selling prices of energy.
         price_imp (np.array): Purchasing prices of energy.
+        imported_energies (list): Imported energies.
+        exported_energies (list): Exported energies.
     """
 
     def __init__(self, data_dir: str, sim_period: Tuple[str, str],
@@ -299,3 +389,41 @@ class Prosumer(Node):
         self.consumption = self.data['consumption'].values
         self.price_exp = self.data['price_exp'].values
         self.price_imp = self.data['price_imp'].values
+
+        # RESET
+        self.imported_energies = []
+        self.exported_energies = []
+        self.energy_trade = []
+
+    def set_observation_space(self, observation_space: Dict) -> None:
+        """
+        Sets the observation space for the node.
+
+        Args:
+            observation_space (Dict): minimum and maximum values for each observation.
+
+        Returns:
+            None
+        """
+        price_exp = observation_space['price_exp']
+        price_imp = observation_space['price_imp']
+        production = observation_space['production']
+        consumption = observation_space['consumption']
+        self.observation_space = spaces.Dict({
+            'price_exp': spaces.Box(low=price_exp[0], high=price_exp[1], shape=(1,), dtype=np.float32),
+            'price_imp': spaces.Box(low=price_imp[0], high=price_imp[1], shape=(1,), dtype=np.float32),
+            'production': spaces.Box(low=production[0], high=production[1], shape=(1,), dtype=np.float32),
+            'consumption': spaces.Box(low=consumption[0], high=consumption[1], shape=(1,), dtype=np.float32)
+        })
+
+    def reset(self) -> None:
+        """
+        Resets the node state, restoring the time step and data to their initial state.
+
+        Returns:
+            None
+        """
+        super().reset()
+        self.imported_energies = []
+        self.exported_energies = []
+        self.energy_trade = []

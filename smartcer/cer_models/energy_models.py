@@ -42,10 +42,9 @@ class StorageSystem(ABC):
         """
         pass
 
-    @abstractmethod
     def terminate(self) -> None:
         """
-        Terminates the operation of the storage system and frees any resources.
+        Ends storage operations. This method can be used to free resources or save the final state, if necessary.
         """
         pass
 
@@ -103,6 +102,10 @@ class Battery(StorageSystem):
         self.energy_desired, self.actual_charges, self.actual_discharges = [], [], []
         self.constraint_violation = []
 
+    def __repr__(self):
+        return f'Battery (capacity={self.capacity}, rated_power={self.rated_power}, soc_min={self.soc_min}, ' \
+                f'efficiency={self.ETA}, alfa={self.ALFA}, beta={self.BETA})'
+
     def charge(self, energy: float, production: float) -> float:
         """
         Manages both the charging and discharging of the battery based on physical constraints and production
@@ -126,7 +129,7 @@ class Battery(StorageSystem):
         soc_init = self.soc * (1 - self.ALFA)
 
         # Charging the battery
-        if energy > 0:
+        if energy >= 0:
             # Rated power constraint
             energy = min(energy, self.rated_power)
             # Capacity constraint
@@ -146,7 +149,7 @@ class Battery(StorageSystem):
             charging_energy = 0.
 
         self.actual_charges.append(charging_energy)
-        self.actual_discharges.append(-discharging_energy)
+        self.actual_discharges.append(np.abs(discharging_energy))
 
         constrained_energy = charging_energy + discharging_energy
         violation = np.abs(constrained_energy - energy)
@@ -183,10 +186,3 @@ class Battery(StorageSystem):
         self.soc_init_list, self.soc_final_list = [], []
         self.energy_desired, self.actual_charges, self.actual_discharges = [], [], []
         self.constraint_violation = []
-
-    def terminate(self) -> None:
-        """
-        Ends the battery's operations. This method can be used to free resources
-        or save the final state, if necessary.
-        """
-        pass
