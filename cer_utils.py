@@ -1,6 +1,6 @@
 from cer_models.node_models import Producer, Consumer, Prosumer
 from cer_models.energy_models import Battery
-from cer_rewards import RewardScaler
+from cer_reward.scaler import RewardScaler
 
 from typing import Annotated, Any, Dict, List, Literal, OrderedDict,Tuple, TypeVar, Union
 from datetime import datetime

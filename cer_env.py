@@ -1,6 +1,6 @@
 from cer_preprocessing.preprocessing import *
 from cer_metrics.scores import *
-from cer_rewards import *
+from cer_reward.reward import *
 from cer_utils import *
 
 from typing import Annotated, Literal, TypeVar, Any, Tuple, Dict, OrderedDict
