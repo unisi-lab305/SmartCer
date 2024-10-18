@@ -117,6 +117,23 @@ cer.save_results(results, output_dir='baseline_random', save_mode='csv')
 
 ---
 
+## Citation
+
+If you use **SmartCer** in your research, please cite this repository as follows:
+
+```bibtex
+@misc{smartcer,
+    author = {Guiducci, Leonardo},
+    title = {SmartCer: A Gymnasium Environment for Renewable Energy Communities},
+    year = {2024},
+    publisher = {GitHub},
+    journal = {GitHub repository},
+    howpublished = {\url{https://github.com/unisi-lab305/SmartCer}},
+}
+```
+
+---
+
 ## License
 
 This project is licensed under the MIT License. For more details, see the [LICENSE](./LICENSE) file.
