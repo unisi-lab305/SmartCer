@@ -98,7 +98,7 @@ done = False
 obs, info = cer.reset(seed)
 episodes = 1
 for i in range(cer.sim_hours * episodes):
-    # raplce this with your RL agent
+    # replace this with your RL agent
     actions = cer.action_space.sample()
     new_obs, reward, terminated, truncated, new_info, _ = cer.step(actions)
 

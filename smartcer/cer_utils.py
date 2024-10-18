@@ -2,7 +2,9 @@ from smartcer.cer_models.node_models import Producer, Consumer, Prosumer
 from smartcer.cer_models.energy_models import Battery
 from smartcer.cer_reward.scaler import RewardScaler
 
-from typing import Annotated, Any, Dict, List, Literal, OrderedDict,Tuple, TypeVar, Union
+from typing import Annotated, Any, Dict, List, Literal, OrderedDict, Tuple, TypeVar, Union
+from functools import wraps
+from typing import Callable
 from datetime import datetime
 
 import collections
@@ -16,7 +18,6 @@ import gymnasium as gym
 import numpy.typing as npt
 import numpy as np
 
-
 DType = TypeVar('DType', bound=np.generic)
 Array1 = Annotated[npt.NDArray[DType], Literal[1]]
 ArrayN = Annotated[npt.NDArray[DType], Literal['N']]
@@ -29,6 +30,7 @@ class OHESpace(gym.Space):
     Example usage:
     self.observation_space = OHESpace(size=4)
     """
+
     def __init__(self, size=None):
         assert isinstance(size, int) and size > 0, "size must be a positive integer"
         self.size = size
@@ -249,6 +251,18 @@ def create_action_dict(actions_array: ArrayN or List, storage_node_ids: List[str
 
     ordered_actions = collections.OrderedDict(sorted(actions.items()))
     return ordered_actions
+
+
+def cast(func: Callable) -> Callable:
+    @wraps(func)
+    def wrapper(self, actions: OrderedDict[str, Array1[np.float32]]) -> (
+            Tuple)[ArrayN[np.float32], Dict[str, float] or float, bool, bool or None, Dict[str, Any], None]:
+        actions_dict = create_action_dict(actions, self.storage_nodes_ids)
+        obs, reward, terminated, truncated, info, done = func(self, actions_dict)
+        flat_obs = flatten_observation(obs)
+
+        return flat_obs, reward, terminated, truncated, info, done
+    return wrapper
 
 
 def get_tip_coefficient(tip_th: float, tip_base: float, pi_zone: float, fi_zone: float, pnrr: float) -> float:

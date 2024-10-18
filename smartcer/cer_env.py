@@ -89,8 +89,8 @@ class SmartCer(gym.Env):
         self.storage_nodes_ids = list(self.storage_nodes.keys())
 
         # METHODS
-        self.flatten_observation = staticmethod(flatten_observation)
         self.create_action_dict = staticmethod(create_action_dict)
+        self.flatten_observation = staticmethod(flatten_observation)
 
         # RESET
         self.time_step = 0
@@ -440,6 +440,15 @@ class SmartCer(gym.Env):
         done = None
 
         return next_obs, reward, terminated, truncated, next_info, done
+
+    @cast
+    def rl_step(self, actions: OrderedDict[str, Array1[np.float32]]) \
+            -> Tuple[Dict[str, Any], Dict[str, float] or float, bool, bool or None, Dict[str, Any], None]:
+        """
+        Perform a simulation step for the Reinforcement Learning environment.
+        Exploit @cast decorator to perform a step with Numpy Array actions and Numpy Array observations.
+        """
+        return self.step(actions)
 
     def reset(self, seed: int | None = None, options: Dict[str, Any] = None) \
             -> Tuple[Dict[str, Any], Dict[str, Any]]:
