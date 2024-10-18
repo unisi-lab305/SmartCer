@@ -375,11 +375,13 @@ class SmartCer(gym.Env):
         for producer in self.producers.values():
             energy_produced = producer.get_current_data('production')
             energy_consumed = 0.
-            energy_exported, energy_imported, trade = get_energy_trade(producer, energy_produced, energy_consumed)
+            energy_exported, energy_imported, trade, self_consumption = get_energy_trade(
+                producer, energy_produced, energy_consumed)
             assert energy_imported >= 0, (f'Energy arbitrage constraint violation -> '
                                           f'{producer.node_id} imported {energy_imported:.2f} kWh')
             producer.exported_energies.append(energy_exported)
             producer.energy_trade.append(trade)
+            producer.self_consumption.append(self_consumption)
             set_tip_and_costs(producer, energy_exported, energy_imported, is_producer=True)
 
         for consumer in self.consumers.values():
@@ -391,12 +393,14 @@ class SmartCer(gym.Env):
         for prosumer in self.prosumers.values():
             energy_produced = prosumer.get_current_data('production')
             energy_consumed = prosumer.get_current_data('consumption')
-            energy_exported, energy_imported, trade = get_energy_trade(prosumer, energy_produced, energy_consumed)
+            energy_exported, energy_imported, trade, self_consumption = get_energy_trade(
+                prosumer, energy_produced, energy_consumed)
             assert energy_imported * energy_exported == 0, f'Simultaneous import-export -> ' \
                                                            f'imp: {energy_imported:.2f}, exp: {energy_exported:.2f}'
             prosumer.exported_energies.append(energy_exported)
             prosumer.imported_energies.append(energy_imported)
             prosumer.energy_trade.append(trade)
+            prosumer.self_consumption.append(self_consumption)
             set_tip_and_costs(prosumer, energy_exported, energy_imported)
 
         # CER imported and exported energy
@@ -540,6 +544,8 @@ class SmartCer(gym.Env):
                 table['energy_imported'] = node.imported_energies[0:time_step + 1]
             if hasattr(node, 'energy_trade'):
                 table['energy_trade'] = node.energy_trade[0:time_step + 1]
+            if hasattr(node, 'self_consumption'):
+                table['self_consumption'] = node.self_consumption[0:time_step + 1]
             if hasattr(node, 'energy_expense'):
                 table['energy_expense'] = node.energy_expense[0:time_step + 1]
             if hasattr(node, 'energy_revenue'):

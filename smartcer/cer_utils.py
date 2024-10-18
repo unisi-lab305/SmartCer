@@ -286,27 +286,35 @@ def get_tip_coefficient(tip_th: float, tip_base: float, pi_zone: float, fi_zone:
 
 
 def get_energy_trade(node: Union[Prosumer, Consumer, Producer],
-                     energy_produced: float, energy_consumed: float) -> Tuple[float, float, float]:
+                     energy_produced: float, energy_consumed: float) -> Tuple[float, float, float, float]:
     """
     Calculates the energy exported and imported by the node.
     :param (Node) node: Node object
     :param (float) energy_produced: energy produced by the node
     :param (float) energy_consumed: energy consumed by the node
 
-    :return (Tuple[float, float, float]): energy exported and imported by the node
+    :return (Tuple[float, float, float, float]): energy exported and imported by the node, energy traded and
+        selfconsumption
     """
     if node.storage:
         energy_trade = (energy_produced + node.storage.actual_discharges[node.time_step] -
                         energy_consumed - node.storage.actual_charges[node.time_step])
     else:
         energy_trade = energy_produced - energy_consumed
+
     if energy_trade > 0:
         energy_exported = energy_trade
         energy_imported = 0.
     else:
         energy_exported = 0.
         energy_imported = -energy_trade
-    return energy_exported, energy_imported, energy_trade
+
+    if energy_produced == 0:
+        selfconsumption = 0.
+    else:
+        selfconsumption = (1 - energy_exported / energy_produced) * 100.
+
+    return energy_exported, energy_imported, energy_trade, selfconsumption
 
 
 def set_tip_and_costs(node: Union[Prosumer, Consumer, Producer], energy_exported: float, energy_imported: float,

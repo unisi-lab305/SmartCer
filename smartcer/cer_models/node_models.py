@@ -313,6 +313,7 @@ class Producer(Node):
         # RESET
         self.exported_energies = []
         self.energy_trade = []
+        self.self_consumption = []
 
     def set_observation_space(self, observation_space: Dict) -> None:
         """
@@ -341,6 +342,7 @@ class Producer(Node):
         super().reset()
         self.exported_energies = []
         self.energy_trade = []
+        self.self_consumption = []
 
 
 class Prosumer(Node):
@@ -394,6 +396,7 @@ class Prosumer(Node):
         self.imported_energies = []
         self.exported_energies = []
         self.energy_trade = []
+        self.self_consumption = []
 
     def set_observation_space(self, observation_space: Dict) -> None:
         """
@@ -427,3 +430,4 @@ class Prosumer(Node):
         self.imported_energies = []
         self.exported_energies = []
         self.energy_trade = []
+        self.self_consumption = []
