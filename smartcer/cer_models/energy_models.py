@@ -122,7 +122,8 @@ class Battery(StorageSystem):
         Returns:
             float: Violations of charging or discharging constraints of the battery.
         """
-        self.energy_desired.append(energy)
+        energy_desired = energy
+        self.energy_desired.append(energy_desired)
         self.soc_init_list.append(self.soc)
 
         # Calculate new SoC (State of Charge)
@@ -152,7 +153,7 @@ class Battery(StorageSystem):
         self.actual_discharges.append(np.abs(discharging_energy))
 
         constrained_energy = charging_energy + discharging_energy
-        violation = np.abs(constrained_energy - energy)
+        violation = np.abs(constrained_energy - energy_desired)
         violation = np.round(violation, 5)
         self.constraint_violation.append(violation)
 
