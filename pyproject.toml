@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "SmartCer"
-version = "0.3.0"
+version = "0.3.1"
 description = "Gymnasium environment for Renewable Energy Community (CER)"
 authors = [{ name = "Leonardo Guiducci", email = "leonardo.guiducci@unisi.it" }]
 license = { text = "MIT" }

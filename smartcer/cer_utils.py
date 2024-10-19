@@ -309,10 +309,7 @@ def get_energy_trade(node: Union[Prosumer, Consumer, Producer],
         energy_exported = 0.
         energy_imported = -energy_trade
 
-    if energy_produced == 0:
-        selfconsumption = 0.
-    else:
-        selfconsumption = (1 - energy_exported / energy_produced) * 100.
+    selfconsumption = min(energy_produced, (energy_consumed + node.storage.actual_charges[node.time_step]))
 
     return energy_exported, energy_imported, energy_trade, selfconsumption
 
