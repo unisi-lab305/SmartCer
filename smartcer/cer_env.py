@@ -266,14 +266,15 @@ class SmartCer(gym.Env):
         })
         return observation_space
 
-    def _get_reward(self) -> Dict[str, float] or float:
+    def _get_reward(self) -> Dict[str, List[float]] or List[float]:
         """
         Get the reward for the current time step.
         Could be a single reward or a dictionary of rewards for each node, depending on the reward type.
 
         Returns:
-            Dict[str, float] or float: Reward for the current time step.
+            Dict[str, List[float]] or List[float]: Reward, penalty, and reward signal for the current time step.
         """
+        # compute reward
         if self.reward.type == 'energy':
             reward = self.reward.compute_energy_reward(time_step=self.time_step)
         elif self.reward.type == 'cost':
@@ -281,10 +282,11 @@ class SmartCer(gym.Env):
         else:
             raise ValueError(f'Invalid reward type: {self.reward.type}. Available types: [energy, cost]')
 
+        # compute penalty
         if self.reward.add_penalty:
             penalty = self.reward.compute_penalty(time_step=self.time_step)
         else:
-            penalty = {} if self.reward.single_agent else 0
+            penalty = {} if self.reward.single_agent else None
 
         # dict of reward signals for each node
         if isinstance(reward, dict) and isinstance(penalty, dict):
@@ -300,22 +302,28 @@ class SmartCer(gym.Env):
                     rewards_signals[node_id] = reward_signal
                 else:
                     rewards_signals[node_id] = reward[node_id]
-            # update list attributes
+            # update list attributes with dict
             self.rewards.append(reward)
             self.penalties.append(penalty)
             self.reward_signals.append(rewards_signals)
-            return rewards_signals
+            return [reward, penalty, rewards_signals]
+
         # collective reward signal
         else:
+            # scale reward
             if self.reward_config['scaler']['apply']:
                 self.reward_scaler.update(reward)
                 reward = self.reward_scaler.scale(reward)
-            reward -= penalty
-            # update list attributes
+            # add penalty
+            if penalty:
+                reward_signal = reward - penalty
+            else:
+                reward_signal = reward
+            # update list attributes with values
             self.rewards.append(reward)
             self.penalties.append(penalty)
-            self.reward_signals.append(reward)
-            return reward
+            self.reward_signals.append(reward_signal)
+            return [reward, penalty, reward_signal]
 
     def _get_info(self) -> Dict[str, Any]:
         """
@@ -354,7 +362,7 @@ class SmartCer(gym.Env):
         return self.time_step == len(self.nodes[self.nodes_ids[0]].date_time)
 
     def step(self, actions: OrderedDict[str, Array1[np.float32]]) \
-            -> Tuple[Dict[str, Any], Dict[str, float] or float, bool, bool or None, Dict[str, Any], None]:
+            -> Tuple[Dict[str, Any], Dict[str, List[float]] or List[float], bool, bool or None, Dict[str, Any], None]:
         """
         Performs a simulation step, calculating the potential and actual TIP for producers, consumers, and prosumers.
         Updates exported and imported energies, self-consumption, and TIP distributions.
@@ -363,8 +371,8 @@ class SmartCer(gym.Env):
             actions [OrderedDict[str, NDArray[(1,), np.float32]]: Action
 
         Returns:
-            Tuple[Dict[str, Any], Dict[str, float] or float, bool, bool or None, Dict[str, Any], None]:
-                  Observation, reward, termination flag, truncation flag, additional information, and done
+            Tuple[Dict[str, Any], Dict[str, List[float]] or List[float], bool, bool or None, Dict[str, Any], None]:
+                  Observation, reward list, termination flag, truncation flag, additional information, and done
         """
         # apply charge and discharge actions
         if actions:
@@ -431,7 +439,7 @@ class SmartCer(gym.Env):
             self.cer_energy_selfcons_percentage[self.time_step] * self.cer_potential_tip[self.time_step])
 
         # reward for the current time step
-        reward = self._get_reward()
+        reward_list = self._get_reward()
         truncated = None  # TODO: add truncation flag for too many constraint violations
 
         # update time step
@@ -443,11 +451,11 @@ class SmartCer(gym.Env):
         next_info = self._get_info()
         done = None
 
-        return next_obs, reward, terminated, truncated, next_info, done
+        return next_obs, reward_list, terminated, truncated, next_info, done
 
     @cast
     def rl_step(self, actions: OrderedDict[str, Array1[np.float32]]) \
-            -> Tuple[Dict[str, Any], Dict[str, float] or float, bool, bool or None, Dict[str, Any], None]:
+            -> Tuple[Dict[str, Any], Dict[str, List[float]] or List[float], bool, bool or None, Dict[str, Any], None]:
         """
         Perform a simulation step for the Reinforcement Learning environment.
         Exploit @cast decorator to perform a step with Numpy Array actions and Numpy Array observations.

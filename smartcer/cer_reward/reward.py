@@ -81,15 +81,15 @@ class Reward:
         Returns:
             Dict[str, float] or float: Reward(s) for the current time step.
         """
-        rewards = {}
-        cumulative_reward = 0.0
         if self.single_agent:
+            rewards = {}
             for node_id, node in self.nodes.items():
                 if node.storage:
                     trade = node.energy_trade[time_step]
                     rewards[node_id] = np.sign(trade) * min(0, trade)**2
             return rewards
         else:
+            cumulative_reward = 0.0
             for node_id, node in self.nodes.items():
                 trade = node.energy_trade[time_step]
                 cumulative_reward += np.sign(trade) * min(0, trade)**2
@@ -108,15 +108,15 @@ class Reward:
         Returns:
             Dict[str, float] or float: Reward(s) for the current time step.
         """
-        rewards = {}
-        cumulative_reward = 0.0
         if self.single_agent:
+            rewards = {}
             for node_id, node in self.nodes.items():
                 if node.storage:
                     cost = node.energy_revenue[time_step] - node.energy_expense[time_step]
                     rewards[node_id] = cost
             return rewards
         else:
+            cumulative_reward = 0.0
             for node_id, node in self.nodes.items():
                 cost = node.energy_revenue[time_step] - node.energy_expense[time_step]
                 cumulative_reward += cost
