@@ -160,11 +160,11 @@ class Node:
         Returns:
             float: Normalized violation of the constraints.
         """
-        energy = action * self.storage.capacity
+        energy = action * self.storage.rated_power
 
         try:
             violation = self.storage.charge(energy, self.get_current_data('production'))
-            return violation / self.storage.capacity
+            return violation / self.storage.rated_power
 
         except AssertionError as e:
             print(f'\n{self.node_id} - {self.time_step}')

@@ -45,7 +45,7 @@ class Reward:
 
     def compute_penalty(self, time_step: int) -> Dict[str, float] or float:
         """
-        Compute penalty for constraint violation ∈ [0,1]. The penalty is normalized by the storage capacity and
+        Compute penalty for constraint violation ∈ [0,1]. The penalty is normalized by the storage nominal power and
         multiplied by the penalty coefficient.
         For single-agent reward, returns a dictionary of penalties for each node. For collective reward, returns the
         mean of all penalties.
@@ -59,7 +59,7 @@ class Reward:
         penalties, scaled_penalties = {}, {}
         for node_id, node in self.nodes.items():
             if node.storage:
-                normalized_penalty = node.storage.constraint_violation[time_step] / node.storage.capacity
+                normalized_penalty = node.storage.constraint_violation[time_step] / node.storage.rated_power
                 penalties[node_id] = normalized_penalty
                 scaled_penalties[node_id] = normalized_penalty * self.penalty_coefficient
 
