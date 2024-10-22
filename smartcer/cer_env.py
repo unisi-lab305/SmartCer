@@ -173,8 +173,9 @@ class SmartCer(gym.Env):
                 if node_id not in self.consumers_ids else RemoveFeature(),
                 'consumption': MinMax(node.consumption.min(), node.consumption.max())
                 if node_id not in self.producers_ids else RemoveFeature(),
-                'soc': Scale(node.storage.capacity)
-                if node.storage else RemoveFeature()
+                'soc': Scale(node.storage.capacity),
+                'upper_bound': Scale(node.storage.rated_power),
+                'lower_bound': Scale(node.storage.rated_power)
             } for node_id, node in self.storage_nodes.items()}
         }
 
@@ -214,6 +215,15 @@ class SmartCer(gym.Env):
                               for node in {**self.producers, **self.prosumers}.values()])
         cer_consumption = sum([node.get_current_data('consumption', time_step)
                                for node in {**self.consumers, **self.prosumers}.values()])
+
+        upper_bounds, lower_bounds = {}, {}
+        for node_id, node in self.storage_nodes.items():
+            # TODO handle consumers
+            upper_bounds[node_id] = min(node.storage.rated_power, node.storage.capacity - node.storage.soc,
+                                        node.get_current_data('production', time_step))
+            lower_bounds[node_id] = min(node.storage.rated_power,
+                                        max(0, node.storage.soc - node.storage.soc_min))
+
         obs = {
             'cer': {
                 'year': year,
@@ -232,8 +242,9 @@ class SmartCer(gym.Env):
                 if node_id not in self.consumers_ids else 0.,
                 'consumption': node.get_current_data('consumption', time_step)
                 if node_id not in self.producers_ids else 0.,
-                'soc': node.storage.soc
-                if node.storage else 0.
+                'soc': node.storage.soc,
+                'upper_bound': upper_bounds[node_id],
+                'lower_bound': lower_bounds[node_id]
             } for node_id, node in self.storage_nodes.items()}
         }
         if preprocessing:
@@ -262,6 +273,8 @@ class SmartCer(gym.Env):
                 'production': spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
                 'consumption': spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
                 'soc': spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
+                'upper_bound': spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
+                'lower_bound': spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32)
             }) for node_id in self.storage_nodes_ids}
         })
         return observation_space
