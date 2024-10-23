@@ -37,7 +37,7 @@ class Reward:
         except KeyError as e:
             raise KeyError(f'Missing key in reward config file: {e}')
 
-        assert self.type in ['energy', 'cost'], f'Invalid reward type: {self.type}. Available types: [energy, cost]'
+        assert self.type in ['energy', 'profit'], f'Invalid reward type: {self.type}. Available types: [energy, profit]'
 
     def __repr__(self):
         return f'{self.__class__.__name__} → type: {self.type}, single_agent: {self.single_agent}, ' \
@@ -95,9 +95,9 @@ class Reward:
                 cumulative_reward += np.sign(trade) * min(0, trade)**2
             return cumulative_reward
 
-    def compute_cost_reward(self, tip: float, time_step: int) -> Dict[str, float] or float:
+    def compute_profit_reward(self, tip: float, time_step: int) -> Dict[str, float] or float:
         """
-        Cost reward: reward=energy_revenue - energy_expense (+ tip for collective reward).
+        Profit reward: reward=energy_revenue - energy_expense (+ tip for collective reward).
         For single-agent reward, returns a dictionary of rewards for each node.
         For collective reward, returns the sum of all rewards plus the total incentive (tip).
 
@@ -112,13 +112,13 @@ class Reward:
             rewards = {}
             for node_id, node in self.nodes.items():
                 if node.storage:
-                    cost = node.energy_revenue[time_step] - node.energy_expense[time_step]
-                    rewards[node_id] = cost
+                    net_profit = node.energy_revenue[time_step] - node.energy_expense[time_step]
+                    rewards[node_id] = net_profit
             return rewards
         else:
             cumulative_reward = 0.0
             for node_id, node in self.nodes.items():
-                cost = node.energy_revenue[time_step] - node.energy_expense[time_step]
-                cumulative_reward += cost
+                net_profit = node.energy_revenue[time_step] - node.energy_expense[time_step]
+                cumulative_reward += net_profit
             cumulative_reward += tip
             return cumulative_reward

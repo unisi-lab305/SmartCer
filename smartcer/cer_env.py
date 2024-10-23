@@ -290,10 +290,10 @@ class SmartCer(gym.Env):
         # compute reward
         if self.reward.type == 'energy':
             reward = self.reward.compute_energy_reward(time_step=self.time_step)
-        elif self.reward.type == 'cost':
-            reward = self.reward.compute_cost_reward(tip=self.cer_actual_tip[self.time_step], time_step=self.time_step)
+        elif self.reward.type == 'profit':
+            reward = self.reward.compute_profit_reward(tip=self.cer_actual_tip[self.time_step], time_step=self.time_step)
         else:
-            raise ValueError(f'Invalid reward type: {self.reward.type}. Available types: [energy, cost]')
+            raise ValueError(f'Invalid reward type: {self.reward.type}')
 
         # compute penalty
         if self.reward.add_penalty:
