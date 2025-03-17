@@ -102,12 +102,14 @@ def node_loader(cer_path: str, cer_config: Dict) \
             storage=storage,
             **p_data['Photovoltaic'],
         )
-        observation_space = {
-            'price_exp': [producers[p_id].price_exp.min(), producers[p_id].price_exp.max()],
-            'production': [producers[p_id].production.min(), producers[p_id].production.max()]
-        }
+        try:
+            observation_space = {
+                'price_exp': [producers[p_id].price_exp.min(), producers[p_id].price_exp.max()],
+                'production': [producers[p_id].production.min(), producers[p_id].production.max()]
+            }
+        except ValueError as e:
+            raise ValueError(f'\nError in node {p_id}: {e}\nCheck simulation period (start-end) and data consistency')
         producers[p_id].set_observation_space(observation_space)
-
     print(f'Producers ({len(producers)}) loaded in {time.time() - start:.2f} seconds')
 
     # CONSUMERS
@@ -121,10 +123,13 @@ def node_loader(cer_path: str, cer_config: Dict) \
             node_type=c_data['Type'],
             storage=storage
         )
-        observation_space = {
-            'price_imp': [consumers[c_id].price_imp.min(), consumers[c_id].price_imp.max()],
-            'consumption': [consumers[c_id].consumption.min(), consumers[c_id].consumption.max()]
-        }
+        try:
+            observation_space = {
+                'price_imp': [consumers[c_id].price_imp.min(), consumers[c_id].price_imp.max()],
+                'consumption': [consumers[c_id].consumption.min(), consumers[c_id].consumption.max()]
+            }
+        except ValueError as e:
+            raise ValueError(f'\nError in node {c_id}: {e}\nCheck simulation period (start-end) and data consistency')
         consumers[c_id].set_observation_space(observation_space)
     print(f'Consumers ({len(consumers)}) loaded in {time.time() - start:.2f} seconds')
 
@@ -140,12 +145,15 @@ def node_loader(cer_path: str, cer_config: Dict) \
             storage=storage,
             **ps_data['Photovoltaic'],
         )
-        observation_space = {
-            'price_exp': [prosumers[ps_id].price_exp.min(), prosumers[ps_id].price_exp.max()],
-            'price_imp': [prosumers[ps_id].price_imp.min(), prosumers[ps_id].price_imp.max()],
-            'production': [prosumers[ps_id].production.min(), prosumers[ps_id].production.max()],
-            'consumption': [prosumers[ps_id].consumption.min(), prosumers[ps_id].consumption.max()]
-        }
+        try:
+            observation_space = {
+                'price_exp': [prosumers[ps_id].price_exp.min(), prosumers[ps_id].price_exp.max()],
+                'price_imp': [prosumers[ps_id].price_imp.min(), prosumers[ps_id].price_imp.max()],
+                'production': [prosumers[ps_id].production.min(), prosumers[ps_id].production.max()],
+                'consumption': [prosumers[ps_id].consumption.min(), prosumers[ps_id].consumption.max()]
+            }
+        except ValueError as e:
+            raise ValueError(f'\nError in node {ps_id}: {e}\nCheck simulation period (start-end) and data consistency')
         prosumers[ps_id].set_observation_space(observation_space)
     print(f'Prosumers ({len(prosumers)}) loaded in {time.time() - start:.2f} seconds')
 
