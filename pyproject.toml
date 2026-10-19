@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools", "wheel"]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -10,28 +10,73 @@ authors = [{ name = "Leonardo Guiducci", email = "leonardo.guiducci@unisi.it" }]
 license = { text = "MIT" }
 readme = "README.md"
 keywords = ["gym", "renewable-energy", "environment", "reinforcement-learning"]
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "gymnasium>=0.29.1",
+    "holidays>=0.35",
     "numpy>=1.26.0",
     "pandas>=2.1.0",
-    "tqdm>=4.66.5"
+    # used by the 0.6.2 environment (smartcer/cer_env.py); removed together with it in phase 3
+    "tqdm>=4.66.5",
 ]
 
 classifiers = [
     "Development Status :: 4 - Beta",
-    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python",
-    "Programming Language :: Python :: 3.10",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence"
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 
-[tool.setuptools]
-packages = ["smartcer"]
-include-package-data = true
+[project.optional-dependencies]
+dev = [
+    "pre-commit>=3.5.0",
+    "pylint>=3.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest>=7.4.0",
+    "ruff>=0.1.0",
+]
+rl = [
+    "stable-baselines3>=2.0.0",
+]
+all = [
+    "pre-commit>=3.5.0",
+    "pylint>=3.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest>=7.4.0",
+    "ruff>=0.1.0",
+    "stable-baselines3>=2.0.0",
+]
 
 [project.urls]
-homepage = "https://github.com/unisi-lab305/SmartCer"
-repository = "https://github.com/unisi-lab305/SmartCer"
-documentation = "https://github.com/unisi-lab305/SmartCer/blob/main/README.md"
+Homepage = "https://github.com/unisi-lab305/SmartCer"
+Repository = "https://github.com/unisi-lab305/SmartCer"
+Documentation = "https://github.com/unisi-lab305/SmartCer/blob/main/README.md"
+
+[tool.setuptools.packages.find]
+include = ["smartcer*"]
+
+[tool.ruff]
+# Python 3.12
+target-version = "py312"
+
+# Line length of 100 characters
+line-length = 100
+
+# Exclude common directories
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "venv",
+]
+
+[tool.ruff.lint.isort]
+# Sort imports alphabetically within sections
+force-sort-within-sections = true
+
+# Use a single line between direct and from imports
+lines-after-imports = 2

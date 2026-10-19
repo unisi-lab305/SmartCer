@@ -1,3 +1,5 @@
+__version__ = '0.6.2'
+
 from gymnasium.envs.registration import register
 
 register(
