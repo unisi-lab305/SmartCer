@@ -36,10 +36,11 @@ class SmartCerEnv(gym.Env):
     controlled; the episode ends on its last step t with `truncated=True` (`terminated` is always
     False). The terminal observation is the observation of step t + 1 with the final battery
     states, as at the start of an episode beginning at t + 1, so that the value of the next state
-    can be bootstrapped; on the last step of the data (or when the forecasts of t + 1 would leave
-    the data) it is the observation of step t with the final battery states. With a forecast
-    horizon H the episodes use the steps 0, ..., n_steps - H - 1 only, so that every forecast lies
-    in the data.
+    can be bootstrapped; only without forecasts, on the last step of the data, it is the
+    observation of step t with the final battery states. With a forecast horizon H the episodes
+    use the steps 0, ..., n_steps - H - 2 with `observe_current_step=True` and 0, ...,
+    n_steps - H - 1 with False, so that the forecasts of every step of an episode and of the step
+    after it lie in the data.
 
     Actions are clipped to [-1, 1] without penalty, then each node clips its action to the dynamic
     bounds and is penalised as in section 7. Non-finite actions raise `ValueError`.
@@ -154,7 +155,16 @@ class SmartCerEnv(gym.Env):
                                            lookback=lookback, normalizer=normalizer,
                                            forecast=forecast, horizon=forecast_horizon)
         n_steps = community.n_steps
-        usable = n_steps - self._builder.horizon
+        horizon = self._builder.horizon
+        # last step whose observation lies in the data, forecasts included
+        last_observable = n_steps - 1 - (
+            self._builder.forecast_start(0) + horizon - 1 if horizon else 0)
+        # with forecasts the step after every episode must be observable too (terminal
+        # observation); without, the last step of the data falls back to its own observation
+        usable = last_observable if horizon else n_steps
+        if usable < 1:
+            raise ValueError(f'forecast horizon {horizon} leaves no step for the episodes (the '
+                             f'period has {n_steps} steps)')
         episode_length = usable if episode_length is None else int(episode_length)
         if not 1 <= episode_length <= usable:
             kept = f', the last {n_steps - usable} kept for the forecasts' if usable < n_steps \
@@ -176,10 +186,7 @@ class SmartCerEnv(gym.Env):
         # true future values of the forecast steps, for `info['privileged']`
         self._truth = PerfectForecast(community) if self.forecast is not None else None
         self._usable_steps = usable
-        # last step whose observation lies in the data, forecasts included
-        horizon = self._builder.horizon
-        self._last_observable = n_steps - 1 - (
-            self._builder.forecast_start(0) + horizon - 1 if horizon else 0)
+        self._last_observable = last_observable
         self.normalizer = self._builder.normalizer
         self.obs_layout = self._builder.layout
         self.observation_space = self._builder.space

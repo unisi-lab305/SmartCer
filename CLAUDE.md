@@ -346,8 +346,8 @@ SmartCerEnv(scenario, start=None, end=None, episode_length=None, random_start=Fa
         clip action to [-1, 1] (no penalty; non-finite → ValueError) → Community.step(t, action)
         → reward calculator (R_t = W_t - σ K_t by default); truncated on the last step t of the
         episode, whose terminal observation (and privileged info) is that of step t + 1 with
-        the final battery states, or of step t on the last step of the data (or when the
-        forecasts of t + 1 would leave it); step() then needs a reset
+        the final battery states, or of step t on the last step of the data (without
+        forecasts only); step() then needs a reset
     - from_v062_config(cer_path, cer_config) → SmartCerEnv (0.6.2 run keys, DeprecationWarning;
       single_agent True → reward_per_node, 'energy' → reward 'energy')
 ```
@@ -400,7 +400,9 @@ OracleWarning                       rows with p_cha > 0 and p_dis > 0 (count, fi
 ```
 
 - Forecasts enter only the observation, oracle data only `info['privileged']` and the
-  `ReplayController`. With horizon H the episodes use the steps 0..n_steps - H - 1.
+  `ReplayController`. With horizon H the episodes use the steps 0..n_steps - H - 2
+  (`observe_current_step=True`) or 0..n_steps - H - 1 (False), so that the step after every
+  episode is observable.
 - Oracle folder (provisional format, docs/CONFIG.md section 6): `trajectory.csv` (`datetime`,
   `node_id`, `p_cha_kw`, `p_dis_kw`, `soc_kwh`, one row per step and battery node) and optional
   `objective.csv` (`date`, `objective` in €, welfare per day). a* = p^cha / P^cha - p^dis / P^dis.

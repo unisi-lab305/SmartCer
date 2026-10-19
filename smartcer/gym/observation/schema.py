@@ -34,7 +34,7 @@ an upper bound computed without the charge cap, so that it does not reveal g of 
 (docs/FORMULATION.md section 12). The lookback holds the L steps before the observed g and l.
 Values before the first row of the data are 0. The forecasts cover the H steps after the observed
 g and l: t + 1, ..., t + H with `observe_current_step=True`, t, ..., t + H - 1 with False; the
-environment keeps its episodes H steps away from the end of the data.
+environment keeps its episodes far enough from the end of the data for them to be observable.
 """
 
 from typing import Any

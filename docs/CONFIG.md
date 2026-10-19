@@ -183,7 +183,7 @@ The run is configured by the arguments of `SmartCerEnv` (`smartcer.gym`), also a
 | `reward_per_node` | `False` | per-node variant of `'profit'` or `'energy'`: r_u = m_u - σ k_u per battery node in `info['reward']['nodes']`, scalar reward Σ_u r_u |
 | `penalty_coefficient` | `10.0` | σ |
 | `forecast` | `None` | forecasts of the observation's `forecast` section: `'perfect'` (true future values, `smartcer.forecasts.PerfectForecast`) or a provider with `reset(rng)` and `get(t, horizon)` (`smartcer.forecasts.ForecastProvider`) |
-| `forecast_horizon` | `0` | forecast horizon H in steps, ≥ 1 with `forecast`; episodes then use the steps 0 … n - H - 1 of the period only, so that every forecast lies in the data |
+| `forecast_horizon` | `0` | forecast horizon H in steps, ≥ 1 with `forecast`; episodes then use the steps 0 … n - H - 2 of the period with `observe_current_step=True` and 0 … n - H - 1 with `False`, so that the forecasts of every step of an episode and of the step after it (terminal observation) lie in the data |
 | `oracle` | `None` | MILP oracle: an oracle folder (below) or a `smartcer.oracle.OracleProvider` of the same community; its data go to `info['privileged']` and to the `ReplayController` |
 | `seed` | `None` | seed used by the first `reset()` called without a seed |
 
@@ -191,9 +191,9 @@ Actions are clipped to [-1, 1] without penalty before the nodes clip them to the
 (penalised, FORMULATION section 7); non-finite actions raise `ValueError`. Episodes end on their last
 step t with `truncated=True`. The terminal observation is that of step t + 1 with the final battery
 states (the same as the first observation of an episode starting at t + 1 with those states), so
-that a learner can bootstrap the value of the next state. On the last step of the data, or when the
-forecasts of step t + 1 would leave the data, it is the observation of step t with the final
-battery states.
+that a learner can bootstrap the value of the next state. Only without forecasts, on the last step
+of the data, it is the observation of step t with the final battery states; with forecasts the
+episodes stop early enough for step t + 1 to be observable (`forecast_horizon`).
 
 ### Observation
 

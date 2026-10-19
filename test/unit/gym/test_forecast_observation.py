@@ -93,9 +93,9 @@ def test_perfect_forecast_puts_the_true_future_in_the_observation(
     observation of an episode holds, at `forecast/<node>/<quantity>`, the scaled true values of
     steps t + 1..t + 3 (`observe_current_step=True`) or t..t + 2 (False), and
     `info['privileged']['true_future']` holds the same values in kWh. By hand, for t = 6 and
-    True: pv_bat generates 0, 10, 10 kWh in hours 7-9 (maximum 10) → 0, 1, 1. The episode ends on
-    step 44; its terminal observation is that of step 45 with False, and of step 44 with True,
-    because the forecasts of step 45 would need step 48, beyond the data.
+    True: pv_bat generates 0, 10, 10 kWh in hours 7-9 (maximum 10) → 0, 1, 1. The whole-period
+    episode has 44 steps with True and 45 with False, and its terminal observation is that of the
+    next step, whose forecasts end on step 47, the last of the data.
 
     Args:
         mini_cer_v1_path: Path of the 1.0-format synthetic scenario.
@@ -125,26 +125,69 @@ def test_perfect_forecast_puts_the_true_future_in_the_observation(
         if action is not None:
             obs, _, _, _, info = env.step(action)
 
-    assert env.episode_length == 45
-    assert seen == [*range(45), 44 if observe_current_step else 45]
+    length = 44 if observe_current_step else 45
+    assert env.episode_length == length
+    assert seen == [*range(length), length]
 
 
-def test_forecast_horizon_shortens_the_episodes(mini_cer_v1_path: Path) -> None:
+@pytest.mark.parametrize(('observe_current_step', 'usable'), [(True, 44), (False, 45)])
+def test_forecast_horizon_shortens_the_episodes(mini_cer_v1_path: Path,
+                                                observe_current_step: bool, usable: int) -> None:
     """
-    Test that with H = 3 the episodes use steps 0..44 only: the default episode has 45 steps, 46
-    steps raise, and random starts of 40-step episodes lie in 0..5 and reach 5.
+    Test that with H = 3 the episodes use steps 0..43 with `observe_current_step=True` (the
+    forecasts of step 44, the step after the last episode step, end on step 47) and 0..44 with
+    False (those of step 45 end on step 47): the default episode has 44 or 45 steps, one more
+    raises, and random starts of 40-step episodes lie in 0..4 or 0..5 and reach the last one.
 
     Args:
         mini_cer_v1_path: Path of the 1.0-format synthetic scenario.
+        observe_current_step: Information timing.
+        usable: Steps the episodes can use.
     """
-    with pytest.raises(ValueError, match=r'\[1, 45\] .* the last 3 kept for the forecasts'):
-        SmartCerEnv(mini_cer_v1_path, forecast='perfect', forecast_horizon=3, episode_length=46)
+    kept = 48 - usable
+    with pytest.raises(ValueError, match=rf'\[1, {usable}\] .* the last {kept} kept for the '
+                                         'forecasts'):
+        SmartCerEnv(mini_cer_v1_path, forecast='perfect', forecast_horizon=3,
+                    observe_current_step=observe_current_step, episode_length=usable + 1)
+    assert SmartCerEnv(mini_cer_v1_path, forecast='perfect', forecast_horizon=3,
+                       observe_current_step=observe_current_step).episode_length == usable
     env = SmartCerEnv(mini_cer_v1_path, forecast='perfect', forecast_horizon=3,
-                      episode_length=40, random_start=True)
+                      observe_current_step=observe_current_step, episode_length=40,
+                      random_start=True)
 
     starts = {env.reset(seed=seed)[1]['episode_start'] for seed in range(200)}
 
-    assert starts == set(range(6))
+    assert starts == set(range(usable - 40 + 1))
+
+
+@pytest.mark.parametrize('observe_current_step', [True, False])
+def test_terminal_observation_with_forecasts_is_the_next_step(
+        mini_cer_v1_path: Path, observe_current_step: bool) -> None:
+    """
+    Test that with forecasts an episode ending on the last usable step (43 with
+    `observe_current_step=True`, 44 with False) returns the observation of the next step, whose
+    forecasts are the true values of steps 45..47, the last of the data. (Without forecasts the
+    fallback to the last step at the end of the data is tested by
+    `test_s10_terminal_observation_comes_from_last_step`.)
+
+    Args:
+        mini_cer_v1_path: Path of the 1.0-format synthetic scenario.
+        observe_current_step: Information timing.
+    """
+    env = SmartCerEnv(mini_cer_v1_path, forecast='perfect', forecast_horizon=3, episode_length=4,
+                      random_start=True, observe_current_step=observe_current_step)
+    last = env.community.n_steps - 3 - (2 if observe_current_step else 1)
+    seed = next(s for s in range(10_000) if env.reset(seed=s)[1]['episode_start'] == last - 3)
+    env.reset(seed=seed)
+    for _ in range(4):
+        obs, _, _, truncated, info = env.step(np.zeros(2))
+
+    assert truncated and info['t'] == last
+    assert info['privileged']['t'] == last + 1
+    load = env.community.node('factory_bat').load_kwh[45:48]
+    np.testing.assert_array_equal(info['privileged']['true_future']['factory_bat/load'], load)
+    np.testing.assert_allclose(obs[env.obs_layout['forecast/factory_bat/load']],
+                               env.normalizer.transform('factory_bat/load', load), atol=1e-7)
 
 
 def test_forecast_provider_is_reset_with_the_episode_generator(mini_cer_v1_path: Path) -> None:
@@ -191,6 +234,7 @@ def test_clipped_forecasts_are_counted(mini_cer_v1_path: Path) -> None:
     ({'forecast_horizon': 2}, ValueError, r'horizon \(2\) needs a forecast provider'),
     ({'forecast': 'perfect'}, ValueError, r'horizon must lie in \[1, 47\]'),
     ({'forecast': 'perfect', 'forecast_horizon': 48}, ValueError, r'got 48'),
+    ({'forecast': 'perfect', 'forecast_horizon': 47}, ValueError, 'leaves no step'),
     ({'forecast': 'perfect', 'forecast_horizon': 1.5}, ValueError, 'must be an integer'),
     ({'forecast': 'oracle', 'forecast_horizon': 2}, ValueError, 'unknown forecast provider'),
     ({'forecast': object(), 'forecast_horizon': 2}, TypeError, 'must have reset'),

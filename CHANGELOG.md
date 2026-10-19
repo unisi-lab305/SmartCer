@@ -67,8 +67,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Forecast providers in `smartcer.forecasts` (`ForecastProvider` protocol, `PerfectForecast`):
   with `forecast='perfect'` (or a provider) and `forecast_horizon` H the observation gets the
   forecasts of generation and load of every battery node for the next H steps
-  (`forecast/<node>/<quantity>`), scaled like the current values; episodes stop H steps before the
-  end of the data and the provider is reset with the environment's random generator
+  (`forecast/<node>/<quantity>`), scaled like the current values; episodes stop early enough for
+  the forecasts of every step and of the step after the episode to lie in the data, and the
+  provider is reset with the environment's random generator
 - MILP oracle in `smartcer.oracle`: `OracleProvider` reads the optimal battery trajectories of an
   oracle folder (`trajectory.csv`, optional daily `objective.csv`; provisional format, parsed by
   the single adapter `read_oracle`) and computes the optimal actions; environment argument
