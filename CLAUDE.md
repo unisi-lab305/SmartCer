@@ -13,9 +13,11 @@ controls the batteries.
 **Status:** version 0.6.2 is being refactored into 1.0.0 following
 [docs/refactor/REFACTOR_v1.md](docs/refactor/REFACTOR_v1.md); progress, deviations and open
 questions are in [docs/refactor/PROGRESS.md](docs/refactor/PROGRESS.md). Phases 0 (infrastructure
-and safety net) and 1 (battery) are complete: the environment is still the 0.6.2 code, covered by
-characterisation tests and by strict expected-failure tests of its known defects; the new 1.0
-battery model lives in `smartcer/core/storage/` and is not used by the 0.6.2 environment.
+and safety net), 1 (battery) and 2 (nodes, community and loader) are complete: the environment is
+still the 0.6.2 code, covered by characterisation tests and by strict expected-failure tests of its
+known defects; the new 1.0 physics and economics (`smartcer/core/`) and scenario loader
+(`smartcer/data/`) are not used by the 0.6.2 environment yet. Scenario keys:
+[docs/CONFIG.md](docs/CONFIG.md).
 
 **Authoritative formulation:** [docs/FORMULATION.md](docs/FORMULATION.md) defines the physics, the
 economics and the reward of SmartCer 1.0. It prevails over the code and over the papers. Do not
@@ -193,7 +195,13 @@ SmartCer/
 ├── smartcer/                       # package (0.6.2 code)
 │   ├── __init__.py                 # __version__, registration of SmartCer-v0
 │   ├── core/                       # 1.0 physics and economics, no Gymnasium import
-│   │   └── storage/                # base.py (StorageSystem), battery.py (Battery, BatteryStep)
+│   │   ├── storage/                # base.py (StorageSystem), battery.py (Battery, BatteryStep)
+│   │   ├── nodes/                  # node.py (Node, NodeStep, NODE_TYPES)
+│   │   └── community/              # shared_energy.py, incentives.py (tip_coefficient,
+│   │                               # UniformIncentive, TipIncentive), welfare.py
+│   │                               # (WelfareBreakdown), community.py (Community, CommunityStep)
+│   ├── data/                       # schema.py (parse_config, ScenarioConfig, TimestampWarning),
+│   │                               # loader.py (load_scenario, read_config)
 │   ├── cer_env.py                  # SmartCer environment (gym.Env)
 │   ├── cer_utils.py                # node loader, OHESpace, energy trade, TIP, CSV and JSON export
 │   ├── cer_models/                 # node_models.py (Node, Producer, Consumer, Prosumer),
@@ -206,12 +214,16 @@ SmartCer/
 ├── test/
 │   ├── conftest.py                 # shared fixtures, description of the synthetic scenario
 │   ├── fixtures/mini_cer/          # synthetic scenario, 0.6.2 format, 4 nodes, 48 h (committed)
+│   ├── fixtures/mini_cer_v1/       # the same scenario in the 1.0 format (committed)
 │   ├── fixtures/local/             # 0.6.2 reference values on Leather (gitignored)
-│   ├── unit/core/                  # layer rules of smartcer/core/; storage/: Battery tests
+│   ├── unit/core/                  # layer rules of smartcer/core/; storage/, nodes/, community/
+│   ├── unit/data/                  # schema and loader on small scenarios written to tmp_path
 │   ├── unit/v062/                  # TIP coefficient; known defects S2, S4, S5, S6
+│   ├── integration/data/           # mini_cer in both formats; Leather vs the 0.6.2 reference
 │   └── integration/v062/           # characterisation; known defects S3, S7-S10; reference values
 ├── scripts/make_reference_v062.py  # writes test/fixtures/local/ (deleted in phase 3)
-├── docs/                           # FORMULATION.md, refactor/REFACTOR_v1.md, refactor/PROGRESS.md
+├── docs/                           # FORMULATION.md, CONFIG.md, refactor/REFACTOR_v1.md,
+│                                   # refactor/PROGRESS.md
 ├── .claude/commands/               # slash commands
 └── .github/workflows/              # ci.yml, release.yml
 ```
@@ -258,6 +270,35 @@ StorageSystem (ABC): get_bounds(delta_t, charge_cap_kwh), step(action, delta_t, 
   `efficiency` → both efficiencies, `alfa` → `alpha`, `beta` ignored); unknown keys, a 0.6.2 key
   combined with its 1.0 target and missing required keys raise `ValueError`.
 
+### Nodes and community (1.0), `smartcer/core/nodes/`, `smartcer/core/community/`
+
+```
+load_scenario(path, start=None, end=None) → Community          (smartcer/data/loader.py)
+Community(nodes, incentive, timestamps, delta_t, name)
+    - node_ids, storage_node_ids (order of the actions), n_steps, node(node_id), reset()
+    - step(t, actions | None) → CommunityStep(t, nodes: tuple[NodeStep], welfare, penalty K_t)
+        1. Node.step(t, action) per node → NodeStep (battery called with the node's charge cap)
+        2. shared_energy(export, import) → E^sh
+        3. incentive.compute(t, E^sh, export) → I (UniformIncentive or TipIncentive)
+        4. welfare_breakdown(...) → WelfareBreakdown(revenue, cost, storage_cost, incentive,
+           shared_energy_kwh, export_kwh, import_kwh, total)
+Node(node_id, node_type, delta_t, generation_kwh, load_kwh, sell_price, buy_price, battery=None,
+     photovoltaic=None, category=None)
+    - charge_cap(t): `production` c = g, `surplus` c = max(0, g - l) (decision D6)
+    - get_bounds(t) → (a_upper, a_lower); step(t, action=None) → NodeStep; reset()
+```
+
+- One `Node` class for the three types (`NODE_TYPES`); the data are per-step arrays in kWh and
+  €/kWh, converted once by the loader; `step()` reads Python floats, no pandas.
+- `NodeStep` fields: `node_id`, `t`, `generation_kwh`, `load_kwh`, `p_cha_kw`, `p_dis_kw`,
+  `charge_kwh`, `discharge_kwh`, `net_kwh` (n), `export_kwh`, `import_kwh`, `revenue`, `cost`,
+  `throughput_kwh`, `storage_cost`, `penalty`, `soc_kwh` (None without battery),
+  `action_requested`, `action_applied`, `a_upper`, `a_lower`.
+- `TipIncentive` holds the per-step, per-node coefficients (0 for nodes without a plant) and
+  `potential(t, export)`; its incentive divides by the total export of all nodes.
+- Loader: 1.0 scenarios are validated strictly; 0.6.2 scenarios are aligned by position and their
+  timestamp irregularities raise a `TimestampWarning` (docs/CONFIG.md section 4).
+
 ### 0.6.2 data flow
 
 ```
@@ -297,8 +338,10 @@ are reproduced by tests marked `xfail(strict=True)` in `test/*/v062/test_known_d
   ignored warning is the `SyntaxWarning` of defect S14, until `node_models.py` is removed
 - `--import-mode=importlib`: no `__init__.py` in test folders; same-named test files in different
   folders do not clash
-- Synthetic scenario `test/fixtures/mini_cer/`: round numbers, results computable by hand (see the
-  docstring of `test/conftest.py`)
+- Synthetic scenario `test/fixtures/mini_cer/` (0.6.2 format) and `test/fixtures/mini_cer_v1/`
+  (the same in the 1.0 format): round numbers, results computable by hand (see the docstring of
+  `test/conftest.py`); `write_scenario` (conftest) writes small 1.0 scenarios to `tmp_path`
+- Loading the local Leather scenario raises a `TimestampWarning`: expect it with `pytest.warns`
 - Tests on local data (`test/fixtures/local/`, `smartcer/cer_data/`) skip when it is missing; tests
   on optional dependencies use `pytest.importorskip`
 - Known defects: `@pytest.mark.xfail(strict=True, raises=<expected exception>, reason='S<n>: ...')`;

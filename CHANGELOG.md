@@ -21,6 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   per hour) and storage usage cost; the state of charge never leaves its limits (0.6.2 defect S4). Not yet used by the
   0.6.2 environment
 - `Battery.from_config` reads storage sections in the 1.0 and the 0.6.2 format
+- Scenario format 1.0 (`format_version`, `delta_t`, `units` in kWh per step or kW, `uniform` or
+  `tip` incentive, explicit CSV paths, 1.0 storage keys) documented in `docs/CONFIG.md`
+- Scenario loader `smartcer.data.load_scenario` for the 1.0 and the 0.6.2 formats, reading every CSV
+  once; validation errors name the node, the file, the column and the first offending row
+- Community model `smartcer.core.Community` with producer, consumer and prosumer nodes, shared
+  energy, `uniform` and `tip` incentives and the welfare breakdown of `docs/FORMULATION.md`; on the
+  0.6.2 scenarios with idle batteries it reproduces the 0.6.2 community results
+- Nodes support an explicit time step and consumers with a battery (0.6.2 defects S5 and S8); the
+  charge rule `production` or `surplus` is set per battery with `charge_limit`
 
 ### Changed
 
@@ -31,6 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - 0.6.2 storage keys `rated_power`, `efficiency` and `alfa` (mapped to their 1.0 equivalents) and
   `beta` (ignored: battery degradation is not modelled)
+- 0.6.2 scenario format (no `format_version`): still read, with a `DeprecationWarning`; its
+  timestamp irregularities are reported in a `TimestampWarning` and rows are aligned by position
+  as in 0.6.2
 
 ### Fixed
 
