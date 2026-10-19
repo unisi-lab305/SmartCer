@@ -1122,3 +1122,12 @@ phase, in the format of section 9 of the brief, newest last.
     it does not decide `passed`. `check_replay` raises `ValueError` unless the period starts at
     00:00 and its last step ends at 24:00.
   - `make test-coverage` → 298 passed, 1 skipped (the DIISM test), coverage 96 %.
+- Follow-up on d (2026-10-19): with forecasts and `observe_current_step=True` the usable period
+  is one step shorter, so episodes use the steps 0 … n − H − 2 and the terminal observation is
+  always that of step t + 1. With False they still use 0 … n − H − 1, whose next step is already
+  observable. The fallback to step t remains only without forecasts, on the last step of the
+  data. A horizon that leaves no step for the episodes (H = n − 1 with True) raises
+  `ValueError`. Docstrings, CONFIG.md, CLAUDE.md and CHANGELOG are updated. New test
+  `test_terminal_observation_with_forecasts_is_the_next_step`, for both timings: an episode
+  ending on the last usable step (43 or 44 of 48, H = 3) returns the observation of the next
+  step, with the true forecasts of steps 45-47.
