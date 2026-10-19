@@ -17,8 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   workflow
 - New battery model `smartcer.core.Battery` following `docs/FORMULATION.md`: separate charge and
   discharge power limits and efficiencies on the node side, explicit time step, dynamic action
-  bounds derived from the dynamics, clipping with a constraint penalty, self-discharge and storage
-  usage cost; the state of charge never leaves its limits (0.6.2 defect S4). Not yet used by the
+  bounds derived from the dynamics, clipping with a constraint penalty, self-discharge (defined
+  per hour) and storage usage cost; the state of charge never leaves its limits (0.6.2 defect S4). Not yet used by the
   0.6.2 environment
 - `Battery.from_config` reads storage sections in the 1.0 and the 0.6.2 format
 

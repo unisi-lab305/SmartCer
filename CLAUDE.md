@@ -239,7 +239,8 @@ StorageSystem (ABC): get_bounds(delta_t, charge_cap_kwh), step(action, delta_t, 
     - from_config(config) → Battery from a 1.0 or 0.6.2 `storage` section
 ```
 
-- Formulation sections 4-7: self-discharge s̃ = max(S^min, (1 - α) s) first, then bounds from s̃,
+- Formulation sections 4-7: self-discharge s̃ = max(S^min, (1 - α)^Δt s) first (`alpha` is per
+  hour), then bounds from s̃,
   clipping of the action to [-a_lower, a_upper] with penalty k, then
   s = s̃ + η^cha p^cha Δt - p^dis Δt / η^dis. Both power limits are on the node side.
 - `charge_cap_kwh` is the cap c of section 6, computed by the node from `charge_limit`

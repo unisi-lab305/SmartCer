@@ -95,7 +95,8 @@ def test_random_actions_respect_soc_limits_and_penalty() -> None:
         for kind, value, charge_cap in zip(kinds, values, caps):
             a_upper, a_lower = battery.get_bounds(delta_t, charge_cap)
             action = a_upper if kind == 0 else (-a_lower if kind == 1 else float(value))
-            soc_start = max(battery.soc_min_kwh, (1.0 - battery.alpha) * battery.soc_kwh)
+            soc_start = max(battery.soc_min_kwh,
+                            (1.0 - battery.alpha) ** delta_t * battery.soc_kwh)
 
             result = battery.step(action, delta_t, charge_cap)
             steps += 1

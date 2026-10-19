@@ -66,7 +66,7 @@ class Battery(StorageSystem):
     Battery with node-side power limits, efficiencies, minimum state of charge and self-discharge.
 
     The state of charge s is kept in kWh; `soc_min` and `soc_initial` are given as fractions of the
-    capacity. Each step: self-discharge s̃ = max(S_min, (1 - α) · s), bounds from s̃, clipping of
+    capacity. Each step: self-discharge s̃ = max(S_min, (1 - α)^Δt · s), bounds from s̃, clipping of
     the action, update s = s̃ + η_cha · p_cha · Δt - p_dis · Δt / η_dis.
 
     Attributes:
@@ -77,7 +77,9 @@ class Battery(StorageSystem):
         efficiency_discharge: Discharge efficiency η^dis, in (0, 1].
         soc_min: Minimum state of charge as a fraction of capacity, in [0, 1).
         soc_initial: Initial state of charge as a fraction of capacity, in [soc_min, 1].
-        alpha: Self-discharge per step α, in [0, 1).
+        alpha: Self-discharge per hour α (scenario key `storage.alpha`), in [0, 1): fraction of the
+            state of charge lost in one hour; over a step of Δt hours the battery keeps
+            (1 - α)^Δt of its charge, i.e. α_step = 1 - (1 - α)^Δt.
         usage_cost: Unit cost of storage usage π^sto (€/kWh of cell throughput), ≥ 0.
         charge_limit: Charge rule used by the node to compute the charge cap: 'production'
             (c = g) or 'surplus' (c = max(0, g - l)); the battery only stores it.
@@ -130,7 +132,8 @@ class Battery(StorageSystem):
             soc_min: Minimum state of charge as a fraction of capacity, in [0, 1). Defaults to 0.
             soc_initial: Initial state of charge as a fraction of capacity, in [soc_min, 1].
                 Defaults to soc_min.
-            alpha: Self-discharge per step, in [0, 1). Defaults to 0.
+            alpha: Self-discharge per hour (key `storage.alpha`), in [0, 1); converted to the step
+                as α_step = 1 - (1 - α)^Δt. Defaults to 0.
             usage_cost: Unit cost of storage usage (€/kWh of cell throughput), ≥ 0. Defaults to 0.
             charge_limit: 'production' (default) or 'surplus', see docs/FORMULATION.md section 6.
 
@@ -233,16 +236,19 @@ class Battery(StorageSystem):
             raise ValueError(f'missing storage keys {missing}')
         return cls(**params)
 
-    def _soc_after_self_discharge(self) -> float:
+    def _soc_after_self_discharge(self, delta_t: float) -> float:
         """
-        State of charge after self-discharge, s̃ = max(S_min, (1 - α) · s).
+        State of charge after self-discharge, s̃ = max(S_min, (1 - α)^Δt · s).
+
+        Args:
+            delta_t: Duration of the step (hours).
 
         Returns:
             float: s̃ (kWh).
         """
         if self.alpha == 0.0:
             return self.soc_kwh
-        return max(self.soc_min_kwh, (1.0 - self.alpha) * self.soc_kwh)
+        return max(self.soc_min_kwh, (1.0 - self.alpha) ** delta_t * self.soc_kwh)
 
     def _bounds(self, soc_kwh: float, delta_t: float,
                 charge_cap_kwh: float | None) -> tuple[float, float]:
@@ -285,7 +291,7 @@ class Battery(StorageSystem):
             ValueError: If delta_t or charge_cap_kwh is invalid.
         """
         _check_step_inputs(delta_t, charge_cap_kwh)
-        return self._bounds(self._soc_after_self_discharge(), delta_t, charge_cap_kwh)
+        return self._bounds(self._soc_after_self_discharge(delta_t), delta_t, charge_cap_kwh)
 
     def step(self, action: float, delta_t: float, charge_cap_kwh: float | None) -> BatteryStep:
         """
@@ -312,7 +318,7 @@ class Battery(StorageSystem):
             raise ValueError(f'action must be a finite number in [-1, 1], got {action}')
         _check_step_inputs(delta_t, charge_cap_kwh)
 
-        soc_start = self._soc_after_self_discharge()
+        soc_start = self._soc_after_self_discharge(delta_t)
         a_upper, a_lower = self._bounds(soc_start, delta_t, charge_cap_kwh)
 
         # clipping and penalty (section 7)

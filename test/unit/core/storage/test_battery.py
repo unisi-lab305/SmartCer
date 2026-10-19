@@ -167,6 +167,22 @@ def test_self_discharge_is_applied_before_the_step_and_clamped() -> None:
     assert at_minimum.step(0.0, 1.0, None).soc_kwh == pytest.approx(2.0)
 
 
+def test_self_discharge_is_defined_per_hour() -> None:
+    """
+    Test α per hour: four idle steps of 0.25 h lose as much as one step of 1 h (5 → 4.5 kWh), and
+    one step of 0.25 h keeps (1 - 0.1)^0.25 of the charge.
+    """
+    quarter = make_battery(soc_initial=0.5, alpha=0.1)
+    first = quarter.step(0.0, 0.25, None)
+    for _ in range(3):
+        last = quarter.step(0.0, 0.25, None)
+
+    assert first.soc_kwh == pytest.approx(5.0 * 0.9 ** 0.25)
+    assert last.soc_kwh == pytest.approx(4.5)
+    assert make_battery(soc_initial=0.5, alpha=0.1).step(0.0, 1.0, None).soc_kwh == pytest.approx(
+        last.soc_kwh)
+
+
 def test_throughput_and_storage_cost() -> None:
     """
     Test the cell throughput and π^sto · throughput for a full charge and a full discharge.
