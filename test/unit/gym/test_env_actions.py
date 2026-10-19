@@ -67,9 +67,15 @@ def test_step_before_reset_raises(mini_cer_v1_path: Path) -> None:
 @pytest.mark.parametrize(('kwargs', 'match'), [
     ({'episode_length': 49}, 'episode_length'),
     ({'episode_length': 0}, 'episode_length'),
-    ({'reward': 'profit'}, 'unknown reward'),
+    ({'reward': 'cost'}, 'unknown reward'),
+    ({'reward_per_node': True}, 'no per-node variant'),
     ({'penalty_coefficient': -1.0}, 'penalty_coefficient'),
-    ({'observation': 'extended'}, 'observation preset'),
+    ({'observation': 'paper'}, 'observation preset'),
+    ({'lookback': 2}, 'extended preset only'),
+    ({'observation': 'extended', 'lookback': -1}, 'lookback'),
+    ({'normalizer_window': ('2023-01-01', None)}, 'contains no step'),
+    ({'normalizer_window': ('2022-01-03', '2022-01-03 05:00'), 'normalizer': 'x.json'},
+     'either normalizer'),
 ])
 def test_invalid_arguments_raise(mini_cer_v1_path: Path, kwargs: dict, match: str) -> None:
     """
