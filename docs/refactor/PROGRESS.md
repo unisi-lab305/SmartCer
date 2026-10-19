@@ -233,7 +233,7 @@ phase, in the format of section 9 of the brief, newest last.
   - `6d3d792` feat(data): add scenario schema and loader for the 1.0 and 0.6.2 formats
   - `c0d0742` test: add node, community and loader tests and the 1.0-format synthetic scenario
   - `2516dcb` ci: import the core and data subpackages from the installed wheel
-  - docs(refactor): add phase 2 progress report (this section)
+  - `9bef16a` docs(refactor): add phase 2 progress report (this section)
 - Done:
   1. `smartcer/core/nodes/node.py`: one `Node` class for producer, consumer and prosumer, optional
      battery, per-step arrays (generation, load, sell and buy price, in kWh and €/kWh) validated
@@ -318,3 +318,21 @@ phase, in the format of section 9 of the brief, newest last.
   3. The shifted Leather timestamps (item 4): do you want to correct the CSVs (I never modify
      `cer_data/`)? A 1.0 conversion of Leather needs regular timestamps.
 - Ready for phase 3: yes; the open questions do not block it.
+- Answers (2026-10-19): 1) a consumer's `sell_price` is read when the column exists, 0 otherwise
+  (loader, `docs/CONFIG.md`, test). 2) the 0.6.2 reading of the `tip` model is kept and stated in
+  `docs/FORMULATION.md` section 9: both sums run over all nodes, nodes without a plant have c = 0,
+  so battery exports of nodes without a plant lower the average coefficient (test
+  `test_tip_export_without_plant_lowers_the_average_coefficient`). 3) the Leather CSVs are not
+  modified. Finding on the shifted rows: in `cartotecnica`, `conceria_dolmen` and `toscana_fridge`
+  the 5,209 rows whose labels are 1 h later than those of the regular nodes form one contiguous
+  block, regular labels 2022-03-27 23:00 → 2022-10-30 23:00 (file labels 2022-03-28 00:00 →
+  2022-10-31 00:00), every row shifted by exactly +1 h. The 2022 Italian daylight-saving period
+  (Europe/Rome) runs from 2022-03-27 02:00 CET (→ 03:00 CEST) to 2022-10-30 03:00 CEST (→ 02:00
+  CET), 5,208 hours. The block covers the same two dates and has the same length within one hour,
+  but its edges are not at the clock changes: it starts 21 h after the spring change and ends 20 h
+  after the autumn change, at 23:00 of both days. It looks like a summer-time correction applied at
+  day granularity rather than at the actual change times; whether the values or the labels are the
+  local-time ones cannot be told from the timestamps alone. The same block is in
+  `cer_azienda/azienda.csv`.
+- Phase 2 pull request merged into `main` on Leonardo's request (see the phase 3 section).
+
