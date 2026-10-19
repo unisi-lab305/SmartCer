@@ -1,8 +1,6 @@
 __version__ = '0.6.2'
 
-from gymnasium.envs.registration import register
+from smartcer.gym import register_envs
 
-register(
-    id='SmartCer-v0',
-    entry_point='smartcer.cer_env:SmartCer',
-)
+
+register_envs()

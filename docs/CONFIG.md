@@ -4,18 +4,24 @@ SmartCer has two configuration levels:
 
 - the **scenario**: a folder with `config.json` and one CSV file per node, the physical and
   economic description of the community (this document, sections 1-5);
-- the **run**: the arguments of a simulation (period, episodes, reward, observation, ...). Only the
-  period exists so far, as arguments of the loader (section 6); the environment arguments are added
-  in phase 3 of the 1.0 refactoring.
+- the **run**: the arguments of the environment (period, episodes, observation, reward, ...),
+  section 6.
 
-Symbols and equations are in [FORMULATION.md](FORMULATION.md). A scenario is loaded with:
+Symbols and equations are in [FORMULATION.md](FORMULATION.md). Typical use:
 
 ```python
-from smartcer.data import load_scenario
+import gymnasium as gym
+import smartcer  # registers SmartCer-v1
 
-community = load_scenario('path/to/scenario', start='2022-01-01 00:00', end='2022-12-31 23:00')
-result = community.step(0, actions)   # one action per battery, in community.storage_node_ids order
+env = gym.make('SmartCer-v1', scenario='path/to/scenario', start='2022-01-01 00:00',
+               end='2022-12-31 23:00', episode_length=24 * 7, random_start=True)
+obs, info = env.reset(seed=0)
+obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
 ```
+
+Without the environment, `smartcer.data.load_scenario(path, start, end)` returns the
+`Community` (nodes, incentive model, timestamps) and `community.step(t, actions)` simulates one
+step.
 
 ## 1. Scenario format 1.0
 
@@ -157,12 +163,38 @@ Energies are kWh per step, powers kW, prices €/kWh, Δt hours (FORMULATION sec
 
 ## 6. Run configuration
 
-| Argument of `load_scenario` | Default | Meaning |
-|---|---|---|
-| `start` | first row | first timestamp of the period, inclusive |
-| `end` | last row | last timestamp of the period, inclusive |
+The run is configured by the arguments of `SmartCerEnv` (`smartcer.gym`), also accepted by
+`gymnasium.make('SmartCer-v1', ...)`:
 
-The environment arguments (episodes, reward, observation, `observe_current_step`, forecast and
-oracle providers, output directory) and the mapping of the 0.6.2 run keys (`simulation.start`,
-`simulation.end`, `simulation.seed`, `reward.type`, `reward.constraints.coefficient`) are added in
-phase 3.
+| Argument | Default | Meaning |
+|---|---|---|
+| `scenario` | – | scenario folder (sections 1-4) or a `smartcer.core.Community` |
+| `start`, `end` | first / last row | period, both inclusive (with a folder only) |
+| `episode_length` | whole period | steps per episode |
+| `random_start` | `False` | first step of each episode drawn with `env.np_random`; otherwise the first step of the period |
+| `observe_current_step` | `True` | information timing, FORMULATION section 12; with `False` the generation and load of the first row of the data are observed as 0 |
+| `observation` | `'meco'` | observation preset ([M24] Tab. II); see `env.obs_layout` |
+| `reward` | `'welfare'` | R_t = W_t - σ K_t (other types from phase 4) |
+| `penalty_coefficient` | `10.0` | σ |
+| `seed` | `None` | seed used by the first `reset()` called without a seed |
+
+Actions are clipped to [-1, 1] without penalty before the nodes clip them to their dynamic bounds
+(penalised, FORMULATION section 7); non-finite actions raise `ValueError`. Episodes end on their last
+step with `truncated=True`.
+
+### 0.6.2 run keys
+
+`SmartCerEnv.from_v062_config(cer_path, cer_config)` maps a 0.6.2 `cer_config` with a
+`DeprecationWarning` that lists the keys it does not use:
+
+| 0.6.2 key | 1.0 argument |
+|---|---|
+| `simulation.start`, `simulation.end` | `start`, `end` |
+| `simulation.seed` | `seed` |
+| `reward.type` `'profit'` or `'cost'` with `reward.single_agent: false` | `reward='welfare'` |
+| `reward.constraints.coefficient` | `penalty_coefficient` (0 if `reward.constraints.penalty` is false) |
+| `simulation.delta_input`, `simulation.delta_output`, `reward.constraints.max_ratio`, `reward.scaler.*` | not used (no reward scaling in the environment) |
+
+`reward.type: 'energy'` and `reward.single_agent: true` raise `ValueError`.
+
+Forecast and oracle providers and the output directory are added in later phases.
