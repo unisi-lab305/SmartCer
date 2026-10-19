@@ -18,6 +18,7 @@ import pandas as pd
 
 from smartcer.core.community import Community
 from smartcer.gym.metrics import compute_kpis
+from smartcer.oracle import OracleProvider
 
 
 WELFARE_COLUMNS = ('revenue', 'cost', 'storage_cost', 'incentive', 'shared_energy_kwh',
@@ -32,22 +33,27 @@ class ResultsTracker:
         node_ids: Node identifiers, in community order.
         capacities: Battery node id → capacity S^max (kWh).
         soc_min: Battery node id → minimum state of charge S^min (kWh).
+        oracle: MILP oracle whose state of charge the battery tables are compared with, or None.
         episode: Number of the current episode (incremented at every reset).
         episodes_completed: Number of episodes that reached their last step.
     """
 
-    def __init__(self, community: Community) -> None:
+    def __init__(self, community: Community, oracle: OracleProvider | None = None) -> None:
         """
         Create an empty tracker for a community.
 
         Args:
             community: The environment's community.
+            oracle: The environment's oracle (`env.oracle`); with one, the table of every battery
+                node also holds the oracle state of charge and the gap from it.
         """
         self.node_ids = community.node_ids
         self.capacities = {node_id: community.node(node_id).battery.capacity
                            for node_id in community.storage_node_ids}
         self.soc_min = {node_id: community.node(node_id).battery.soc_min_kwh
                         for node_id in community.storage_node_ids}
+        self.oracle = oracle
+        self._oracle_column = {node_id: u for u, node_id in enumerate(community.storage_node_ids)}
         self.episode = 0
         self.episodes_completed = 0
         self._community_rows: list[dict[str, Any]] = []
@@ -92,6 +98,10 @@ class ResultsTracker:
             if node_id in node_rewards:
                 r = node_rewards[node_id]
                 row.update(reward=r['total'], reward_main=r['main'], reward_penalty=r['penalty'])
+            if self.oracle is not None and node_id in self._oracle_column:
+                # both at the end of step t, i.e. at the start of step t + 1
+                oracle_soc = float(self.oracle.soc_kwh[info['t'], self._oracle_column[node_id]])
+                row.update(oracle_soc_kwh=oracle_soc, soc_gap_kwh=fields['soc_kwh'] - oracle_soc)
             self._node_rows[node_id].append(row)
         if done:
             self._completed = (pd.DataFrame(self._community_rows),
@@ -130,8 +140,10 @@ class ResultsTracker:
 
         Returns:
             dict[str, pd.DataFrame]: Node id → one row per step with `datetime`, `episode`, `t`,
-            the `NodeStep` fields and, with per-node rewards, `reward`, `reward_main`,
-            `reward_penalty`.
+            the `NodeStep` fields, with per-node rewards `reward`, `reward_main`,
+            `reward_penalty` and, for a battery node with an oracle, `oracle_soc_kwh` (the oracle
+            state of charge at the end of step t, the instant of `soc_kwh`) and `soc_gap_kwh`
+            (`soc_kwh` - `oracle_soc_kwh`).
         """
         return {node_id: table.copy() for node_id, table in self._last()[1].items()}
 
@@ -207,7 +219,7 @@ class TrackResults(gym.Wrapper):
         community = getattr(env.unwrapped, 'community', None)
         if not isinstance(community, Community):
             raise TypeError(f'TrackResults needs a SmartCerEnv, got {type(env.unwrapped).__name__}')
-        self.tracker = ResultsTracker(community)
+        self.tracker = ResultsTracker(community, getattr(env.unwrapped, 'oracle', None))
 
     def reset(self, *, seed: int | None = None,
               options: dict[str, Any] | None = None) -> tuple[Any, dict[str, Any]]:

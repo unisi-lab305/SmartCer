@@ -19,6 +19,8 @@ PENALTY_TOLERANCE = 1e-9
 COMMUNITY_COLUMNS = ('reward', 'welfare', 'revenue', 'cost', 'storage_cost', 'incentive',
                      'shared_energy_kwh', 'export_kwh', 'import_kwh', 'penalty')
 NODE_COLUMNS = ('charge_kwh', 'discharge_kwh', 'throughput_kwh', 'penalty')
+# column of the gap from the oracle state of charge, present only in runs with an oracle
+SOC_GAP_COLUMN = 'soc_gap_kwh'
 
 
 def ratio(numerator: float, denominator: float) -> float:
@@ -74,7 +76,9 @@ def compute_kpis(community: pd.DataFrame, nodes: Mapping[str, pd.DataFrame],
         `throughput_kwh`, `equivalent_full_cycles` (on S^max) and `efc_usable` (on S^max - S^min)
         of all batteries; `penalty_mean`, `penalty_max`, `penalty_steps` of K_t; `batteries`: per
         battery node, `charge_kwh`, `discharge_kwh`, `throughput_kwh`, `equivalent_full_cycles`,
-        `efc_usable` and the penalty statistics of k_u.
+        `efc_usable`, the penalty statistics of k_u and, when its table has `soc_gap_kwh` (runs
+        with an oracle), `soc_gap_mean_kwh` and `soc_gap_max_kwh`: mean and maximum of the
+        absolute gap between the battery's and the oracle's state of charge.
 
     Raises:
         ValueError: If a column or a battery node table is missing, a capacity is not positive or
@@ -114,6 +118,10 @@ def compute_kpis(community: pd.DataFrame, nodes: Mapping[str, pd.DataFrame],
             'efc_usable': throughput / (2.0 * usable[node_id]),
             **penalty_statistics(table['penalty'].to_numpy(dtype=np.float64)),
         }
+        if SOC_GAP_COLUMN in table.columns:
+            gap = np.abs(table[SOC_GAP_COLUMN].to_numpy(dtype=np.float64))
+            batteries[node_id].update(soc_gap_mean_kwh=float(gap.mean()) if gap.size else 0.0,
+                                      soc_gap_max_kwh=float(gap.max()) if gap.size else 0.0)
     throughput = sum(b['throughput_kwh'] for b in batteries.values())
     kpis['throughput_kwh'] = throughput
     kpis['equivalent_full_cycles'] = ratio(throughput, 2.0 * sum(capacities.values()))

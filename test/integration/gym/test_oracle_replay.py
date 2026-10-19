@@ -68,8 +68,10 @@ def test_privileged_info_follows_the_returned_observation(mini_cer_v1_path: Path
     """
     Test that `info['privileged']` holds the oracle action and state of charge of the step of the
     observation it comes with (the next action; the last step again at the end), with a* computed
-    from the file by hand (pv_bat 5 kW, factory_bat 10 kW), and no `true_future` without
-    forecasts.
+    from the file by hand (pv_bat 5 kW, factory_bat 10 kW) and the state of charge at the start
+    of the step (S^ini 2 and 4 kWh at step 0, else the file's state at the end of the step
+    before), equal to the observed one when the oracle actions are played; no `true_future`
+    without forecasts.
 
     Args:
         mini_cer_v1_path: Path of the 1.0-format synthetic scenario.
@@ -92,7 +94,14 @@ def test_privileged_info_follows_the_returned_observation(mini_cer_v1_path: Path
             privileged['oracle_action'],
             [r['p_cha_kw'] / power[n] - r['p_dis_kw'] / power[n]
              for r, n in zip(rows, env.storage_node_ids)], atol=1e-15)
-        np.testing.assert_array_equal(privileged['oracle_soc'], [r['soc_kwh'] for r in rows])
+        start = [2.0, 4.0] if t == 0 else [
+            trajectory.loc[(stamp - pd.Timedelta(hours=1), n), 'soc_kwh']
+            for n in env.storage_node_ids]
+        np.testing.assert_array_equal(privileged['oracle_soc'], start)
+        if len(steps) < 48:
+            np.testing.assert_allclose(
+                privileged['oracle_soc'],
+                [env.community.node(n).battery.soc_kwh for n in env.storage_node_ids], atol=1e-12)
         steps.append(t)
         if len(steps) > 48:
             break
@@ -133,8 +142,9 @@ def test_replay_reports_a_welfare_gap(mini_cer_v1_path: Path, synthetic_oracle: 
 def test_replay_reports_infeasible_oracle_actions(mini_cer_v1_path: Path, synthetic_oracle: Path,
                                                   tmp_path: Path) -> None:
     """
-    Test that an oracle charging pv_bat at midnight, when it generates nothing (A^upper = 0),
-    is clipped and penalised by the environment and fails the check.
+    Test that an oracle charging pv_bat at 01:00, when it generates nothing (A^upper = 0), is
+    clipped and penalised by the environment and fails the check. (The first row is left as it
+    is: it fixes the MILP's initial state of charge.)
 
     Args:
         mini_cer_v1_path: Path of the 1.0-format synthetic scenario.
@@ -143,14 +153,14 @@ def test_replay_reports_infeasible_oracle_actions(mini_cer_v1_path: Path, synthe
     """
     path = synthetic_oracle / 'trajectory.csv'
     trajectory = pd.read_csv(path)
-    row = (trajectory['datetime'] == '2022-01-03 00:00:00') & (trajectory['node_id'] == 'pv_bat')
+    row = (trajectory['datetime'] == '2022-01-03 01:00:00') & (trajectory['node_id'] == 'pv_bat')
     trajectory.loc[row, ['p_cha_kw', 'p_dis_kw']] = [1.0, 0.0]
     trajectory.to_csv(path, index=False)
     env = SmartCerEnv(mini_cer_v1_path, oracle=synthetic_oracle)
 
     result = check_replay(env, tmp_path / 'out')
 
-    assert not result.passed
+    assert not result.passed and result.clipped_rows == 0
     assert result.penalty_steps >= 1
     # k = 0.2 for pv_bat, averaged over the two batteries
     assert result.penalty_max == pytest.approx(0.1)
@@ -263,3 +273,91 @@ def test_replay_of_the_diism_oracle(tmp_path: Path) -> None:
 
         assert result.penalty_steps == 0, f'{folder}: {result}'
         assert result.relative_gap is None or result.relative_gap <= RTOL, f'{folder}: {result}'
+
+
+def idle_night_row(trajectory: pd.DataFrame, node_id: str) -> pd.Series:
+    """
+    Mask of the first oracle row of a node, after the first step, in a night hour (0-7, no
+    generation) with both powers zero.
+
+    Args:
+        trajectory: Table of `trajectory.csv`.
+        node_id: Battery node.
+
+    Returns:
+        pd.Series: Boolean mask selecting one row.
+    """
+    stamps = pd.to_datetime(trajectory['datetime'])
+    idle = ((trajectory['node_id'] == node_id) & (stamps.dt.hour.between(1, 7))
+            & (trajectory['p_cha_kw'] == 0.0) & (trajectory['p_dis_kw'] == 0.0))
+    first = stamps[idle].min()
+    return idle & (stamps == first)
+
+
+@pytest.mark.parametrize(('p_cha_kw', 'clipped'), [(5e-7, True), (2e-6, False)])
+def test_replay_clips_solver_round_off_into_the_bounds(mini_cer_v1_path: Path,
+                                                       synthetic_oracle: Path, tmp_path: Path,
+                                                       p_cha_kw: float, clipped: bool) -> None:
+    """
+    Test the replay tolerance: an oracle that charges pv_bat at night (A^upper = 0) with
+    5e-7 kW for one hour exceeds the bound by 5e-7 kWh ≤ 1e-6 kWh, so the replay moves it onto the
+    bound without penalty, counts it and passes; 2e-6 kWh is a real violation, penalised and not
+    counted.
+
+    Args:
+        mini_cer_v1_path: Path of the 1.0-format synthetic scenario.
+        synthetic_oracle: Oracle folder of the synthetic scenario.
+        tmp_path: Pytest temporary directory.
+        p_cha_kw: Charge power written in an idle night row of pv_bat.
+        clipped: Whether the replay should clip it.
+    """
+    path = synthetic_oracle / 'trajectory.csv'
+    trajectory = pd.read_csv(path)
+    trajectory.loc[idle_night_row(trajectory, 'pv_bat'), 'p_cha_kw'] = p_cha_kw
+    trajectory.to_csv(path, index=False)
+    env = SmartCerEnv(mini_cer_v1_path, oracle=synthetic_oracle)
+
+    result = check_replay(env, tmp_path / 'out')
+
+    summary = json.loads((tmp_path / 'out' / 'oracle_replay.json').read_text(encoding='utf-8'))
+    if clipped:
+        assert result.passed and result.penalty_steps == 0
+        assert result.clipped_rows == summary['clipped_rows'] == 1
+        assert result.clipped_max_kwh == pytest.approx(5e-7)
+    else:
+        assert not result.passed and result.penalty_steps == 1
+        assert result.clipped_rows == summary['clipped_rows'] == 0
+        assert result.clipped_max_kwh == 0.0
+
+
+def test_tracker_reports_the_gap_from_the_oracle_state_of_charge(mini_cer_v1_path: Path,
+                                                                 synthetic_oracle: Path,
+                                                                 tmp_path: Path) -> None:
+    """
+    Test the agent-oracle gap of the state of charge: the battery tables hold the oracle state at
+    the end of every step and the gap from it; replaying a* gives a gap of 0, idle batteries
+    (naive) stay at S^ini, so their gap is S^ini minus the oracle state, and the KPIs report its
+    absolute mean and maximum per battery. Without an oracle the columns and KPIs are absent.
+
+    Args:
+        mini_cer_v1_path: Path of the 1.0-format synthetic scenario.
+        synthetic_oracle: Oracle folder of the synthetic scenario.
+        tmp_path: Pytest temporary directory.
+    """
+    env = SmartCerEnv(mini_cer_v1_path, oracle=synthetic_oracle)
+    kpis = compute_baselines(env, tmp_path / 'out', controllers=('replay', 'naive'))
+
+    for node_id, start in (('pv_bat', 2.0), ('factory_bat', 4.0)):
+        table = pd.read_csv(tmp_path / 'out' / 'naive' / 'nodes' / f'{node_id}.csv')
+        oracle = env.oracle.soc_kwh[:, env.storage_node_ids.index(node_id)]
+        np.testing.assert_allclose(table['oracle_soc_kwh'], oracle)
+        np.testing.assert_allclose(table['soc_gap_kwh'], start - oracle)
+        naive = kpis['naive']['batteries'][node_id]
+        assert naive['soc_gap_mean_kwh'] == pytest.approx(np.abs(start - oracle).mean())
+        assert naive['soc_gap_max_kwh'] == pytest.approx(np.abs(start - oracle).max())
+        assert naive['soc_gap_max_kwh'] > 1.0
+        assert kpis['replay']['batteries'][node_id]['soc_gap_max_kwh'] <= 1e-9
+    plain = compute_baselines(SmartCerEnv(mini_cer_v1_path), tmp_path / 'plain',
+                              controllers=('naive',))
+    assert 'soc_gap_mean_kwh' not in plain['naive']['batteries']['pv_bat']
+    assert 'soc_gap_kwh' not in pd.read_csv(tmp_path / 'plain' / 'naive' / 'nodes' / 'pv_bat.csv')

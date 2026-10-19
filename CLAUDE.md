@@ -12,12 +12,14 @@ controls the batteries.
 
 **Status:** version 0.6.2 is being refactored into 1.0.0 following
 [docs/refactor/REFACTOR_v1.md](docs/refactor/REFACTOR_v1.md); progress, deviations and open
-questions are in [docs/refactor/PROGRESS.md](docs/refactor/PROGRESS.md). Phases 0-7 are complete:
-the Gymnasium environment `SmartCer-v1` (`smartcer/gym/`, with its rewards, observation presets,
-baseline controllers, results tracking and KPIs) wraps the 1.0 physics and economics
-(`smartcer/core/`) and the scenario loader (`smartcer/data/`); forecast providers
-(`smartcer/forecasts/`) feed the observation and the MILP oracle (`smartcer/oracle/`, provisional
-file format) feeds `info['privileged']` and the replay check; all 0.6.2 modules were removed.
+questions are in [docs/refactor/PROGRESS.md](docs/refactor/PROGRESS.md). Phases 0-7 and the extra
+phase 7b are complete: the Gymnasium environment `SmartCer-v1` (`smartcer/gym/`, with its rewards,
+observation presets, baseline controllers, results tracking and KPIs) wraps the 1.0 physics and
+economics (`smartcer/core/`) and the scenario loader (`smartcer/data/`); forecast providers
+(`smartcer/forecasts/`: perfect, and simulated MMFE errors with provisional presets) feed the
+observation and the MILP oracle (`smartcer/oracle/`, provisional file format) feeds
+`info['privileged']`, the agent-oracle SoC gap and the replay check; all 0.6.2 modules were
+removed.
 One year of Leather takes about 3 s (`make bench`). Scenario and run arguments:
 [docs/CONFIG.md](docs/CONFIG.md).
 
@@ -56,8 +58,8 @@ obs, info = env.reset(seed=0)
 obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
 # direct use: from smartcer.gym import SmartCerEnv; SmartCerEnv('path/to/scenario', ...)
 # 0.6.2 run configuration: SmartCerEnv.from_v062_config(cer_path, cer_config)
-# forecasts and oracle: SmartCerEnv(scenario, forecast='perfect', forecast_horizon=12,
-#                                   oracle='path/to/oracle_folder')
+# forecasts and oracle: SmartCerEnv(scenario, forecast='mmfe_standard', forecast_horizon=12,
+#                                   oracle='path/to/oracle_folder')   # or forecast='perfect'
 ```
 
 Arguments: `docs/CONFIG.md` section 6.
@@ -72,6 +74,7 @@ make test-integration       # test/integration/ only
 make test-coverage          # coverage report (terminal, htmlcov/, coverage.xml)
 make bench                  # step benchmark: one year of the local Leather scenario, 3 episodes
 python benchmarks/bench_step.py --scenario <folder> --episodes 5 --observation extended
+python benchmarks/bench_step.py --forecast mmfe_standard --horizon 12   # with forecasts
 make version                # check that pyproject.toml and smartcer/__init__.py agree
 make clean                  # remove caches, coverage and build files
 
@@ -214,8 +217,11 @@ SmartCer/
 │   │                               # (WelfareBreakdown), community.py (Community, CommunityStep)
 │   ├── data/                       # schema.py (parse_config, ScenarioConfig, TimestampWarning),
 │   │                               # loader.py (load_scenario, read_config)
-│   ├── forecasts/                  # base.py (ForecastProvider protocol), perfect.py
-│   │                               # (PerfectForecast), __init__.py (FORECAST_PROVIDERS)
+│   ├── forecasts/                  # base.py (ForecastProvider protocol, forecast_series,
+│   │                               # community_totals, check_steps), perfect.py
+│   │                               # (PerfectForecast), mmfe.py
+│   │                               # (MMFEForecast, MMFEParameters, MMFE_PRESETS),
+│   │                               # __init__.py (FORECAST_PROVIDERS)
 │   ├── oracle/                     # provider.py (read_oracle adapter, OracleData,
 │   │                               # OracleProvider)
 │   ├── gym/                        # __init__.py (register_envs, ENV_ID), cer_env.py (SmartCerEnv),
@@ -240,7 +246,8 @@ SmartCer/
 │   ├── fixtures/local/             # 0.6.2 reference values on Leather (gitignored)
 │   ├── unit/core/                  # layer rules of smartcer/core/; storage/, nodes/, community/
 │   ├── unit/data/                  # schema and loader on small scenarios written to tmp_path
-│   ├── unit/forecasts/             # PerfectForecast
+│   ├── unit/forecasts/             # PerfectForecast; MMFEForecast (statistical tests on many
+│   │                               # seeds: variance, consistency, correlation, AR(1))
 │   ├── unit/oracle/                # oracle adapter and provider on files written to tmp_path
 │   ├── unit/gym/                   # observation features, normaliser, rewards, run configuration,
 │   │                               # actions and arguments, controllers, tracker, KPIs, Fit Score,
@@ -354,7 +361,8 @@ SmartCerEnv(scenario, start=None, end=None, episode_length=None, random_start=Fa
 
 - `info` of a step: `t`, `timestamp`, `privileged` (also in the reset info; about the step of the
   returned observation: `{}` without oracle and forecasts, else `t`, `oracle_action` and
-  `oracle_soc` with an oracle, `true_future` in kWh with forecasts),
+  `oracle_soc` (state at the start of the step) with an oracle, `true_future` in kWh with
+  forecasts),
   `obs_clipped` (values of the returned observation clipped to [0, 1], also in the reset info),
   `reward` (`type`, `main`, `penalty` = weighted penalty, `total` = R_t, and `nodes` with
   `reward_per_node`), `welfare` (breakdown), `penalty` (K_t), `action` (after the [-1, 1] clip),
@@ -373,11 +381,13 @@ SmartCerEnv(scenario, start=None, end=None, episode_length=None, random_start=Fa
   `<node>/a_upper`. Preset `extended` adds `time/holiday` (Italian national holidays only),
   `community/generation`, `community/load` (totals of the nodes without a battery) and, with
   `lookback` L, `<node>/generation_lookback`, `<node>/load_lookback` (L values, most recent first).
-  Both presets, with `forecast` and H: `forecast/<node>/generation`, `forecast/<node>/load` per
-  battery node (H values by lead time, steps t + 1..t + H, or t..t + H - 1 with
-  `observe_current_step=False`; scaled with the bounds of `<node>/generation`, `<node>/load`).
-  Static features are precomputed for every step; only SoC, bounds and forecasts are computed in
-  `step()`. Bounds of constant features are widened by 1 so that low < high.
+  Both presets, with `forecast` and H (H values by lead time, steps t + 1..t + H, or
+  t..t + H - 1 with `observe_current_step=False`): `forecast/price_sell` (global prices) or
+  `forecast/<node>/sell_price` (exact, not normalised, precomputed; no purchase price), then
+  `forecast/community/generation`, `forecast/community/load` and `forecast/<node>/generation`,
+  `forecast/<node>/load` per battery node (from the provider, scaled with the bounds of the
+  current quantity). Static features (sale price forecasts included) are precomputed for every
+  step; only SoC, bounds and the provider's forecasts are computed in `step()`. Bounds of constant features are widened by 1 so that low < high.
 - Generation and load are min-max scaled with a `MinMaxNormalizer` fitted by `fit_normalizer` on
   the training window `normalizer_window` only, then clipped to [0, 1]
   (`ObservationBuilder.clipped` counts the clipped values per step); JSON via `save`/`load`
@@ -390,19 +400,32 @@ SmartCerEnv(scenario, start=None, end=None, episode_length=None, random_start=Fa
 ### Forecasts and oracle, `smartcer/forecasts/`, `smartcer/oracle/`
 
 ```
-ForecastProvider (Protocol): reset(rng), get(t, horizon) → {'<node_id>/<quantity>': H values}
-└── PerfectForecast(community)      true generation and load of every node, steps t..t+H-1
-FORECAST_PROVIDERS                  read-only registry: 'perfect' → factory taking the community
+ForecastProvider (Protocol): reset(rng), get(t, horizon) → {key: H values}, keys
+                                    '<node_id>/<quantity>' and 'community/<quantity>'
+├── PerfectForecast(community)      true values of every node and the community totals
+└── MMFEForecast(community, parameters='standard')   MMFE errors on forecast_series(community)
+        (battery nodes and community totals): innovations per target step drawn once per
+        episode (lazily, generator spawned from env.np_random), error at lead h = sum of h
+        innovations; ε = b + σ (√ρ z + √(1-ρ) ξ), z common per quantity, AR(1) (φ) over targets;
+        PV: clip(y + r e, 0, peak), r = monthly mean at that time of day; load: max(y (1 + e), 0)
+MMFEParameters(sigma_generation, sigma_load, rho, phi, bias_generation, bias_load)
+MMFE_PRESETS                        'perfect', 'standard', 'noisy' (provisional values)
+FORECAST_PROVIDERS                  read-only registry: 'perfect', 'mmfe_<preset>' → factory
+                                    taking the community
 read_oracle(folder) → OracleData    the only function that knows the oracle file format
 OracleProvider(data, community)     .from_folder(folder, community); actions a* (n_steps, N),
-                                    soc_kwh, daily_objective, simultaneous_rows, action(t), soc(t)
+                                    soc_kwh (end of step), soc_start_kwh, daily_objective,
+                                    simultaneous_rows, action(t), soc(t) (start of step t)
 OracleWarning                       rows with p_cha > 0 and p_dis > 0 (count, first timestamp)
 ```
 
-- Forecasts enter only the observation, oracle data only `info['privileged']` and the
-  `ReplayController`. With horizon H the episodes use the steps 0..n_steps - H - 2
-  (`observe_current_step=True`) or 0..n_steps - H - 1 (False), so that the step after every
-  episode is observable.
+- Forecasts enter only the observation, oracle data only `info['privileged']`, the
+  `ReplayController` and the SoC gap of the tracker. With horizon H the episodes use the steps
+  0..n_steps - H - 2 (`observe_current_step=True`) or 0..n_steps - H - 1 (False), so that the
+  step after every episode is observable.
+- The MILP's S^ini is inferred from the first row of the oracle file
+  (s - η^cha p^cha Δt + p^dis Δt / η^dis) and must equal the scenario's `soc_initial` within 1e-6
+  kWh (`SOC_INITIAL_TOLERANCE_KWH`), else `ValueError`.
 - Oracle folder (provisional format, docs/CONFIG.md section 6): `trajectory.csv` (`datetime`,
   `node_id`, `p_cha_kw`, `p_dis_kw`, `soc_kwh`, one row per step and battery node) and optional
   `objective.csv` (`date`, `objective` in €, welfare per day). a* = p^cha / P^cha - p^dis / P^dis.
@@ -419,20 +442,24 @@ Controller(env)                     bound to the unwrapped SmartCerEnv; reads en
 ├── NaiveController ('naive')       zero actions
 ├── RBCController(env, mode='community')   FORMULATION section 13 ([M24] Algorithm 1);
 │                                   names 'rbc_node', 'rbc_community'
-└── ReplayController ('replay')     the oracle actions a* (env created with `oracle`)
+└── ReplayController ('replay')     the oracle actions a* (env created with `oracle`); a bound
+                                    violation ≤ 1e-6 kWh (REPLAY_TOLERANCE_KWH) is moved onto
+                                    the bound and counted (clipped_rows, clipped_max_kwh)
 CONTROLLERS                         read-only registry: name → factory taking the env
 run_episode(env, controller, seed) → ResultsTracker
 check_replay(env, output_dir, rtol=1e-3, seed=None) → ReplayCheck
     plays a* over the whole period (whole days only): passed if K_t ≤ 1e-9 at every step and the
     cumulative welfare is within rtol of the MILP objective; reports the oracle rows with
-    simultaneous charge and discharge; writes oracle_daily.csv and oracle_replay.json
+    simultaneous charge and discharge and the actions moved within the tolerance; writes
+    oracle_daily.csv and oracle_replay.json
 compute_baselines(env, output_dir, controllers=('naive', 'rbc_community'), seed=None)
     → {name: KPIs}
     writes <output_dir>/<name>/ (community.csv, nodes/<id>.csv, kpis.json, run_config.json) and
     <output_dir>/kpis.json; refuses the scenario folder and any cer_data folder (S18)
-TrackResults(env) wrapper → env.get_wrapper_attr('tracker'): ResultsTracker
+TrackResults(env) wrapper → env.get_wrapper_attr('tracker'): ResultsTracker(community, oracle)
     - community_table(), node_tables(), kpis(), save(output_dir, run_config) of the last
-      completed episode (only the current and the last completed episode are kept)
+      completed episode (only the current and the last completed episode are kept); with an
+      oracle the battery tables add oracle_soc_kwh and soc_gap_kwh (end of each step)
 ResultsCallback(output_dir, save_freq=1, run_config=None)   SB3, DummyVecEnv of TrackResults:
     logs KPIs under 'smartcer/<kpi>' at every completed episode, saves every save_freq episodes
 compute_kpis(community_table, node_tables, capacities, soc_min) → dict   (formulas: KPI.md)
@@ -449,7 +476,8 @@ fit_score(reference, candidate) → F (%), daily_welfare(community_table) → W 
 - KPIs: welfare and its components, shared, exported and imported energy, sharing rate
   (shared / exported), coverage rate (shared / imported), battery charge, discharge, cell
   throughput, equivalent full cycles on S^max (`equivalent_full_cycles`) and on S^max - S^min
-  (`efc_usable`), penalty mean, max and steps (> 1e-9). Rates are fractions.
+  (`efc_usable`), penalty mean, max and steps (> 1e-9) and, with an oracle, the absolute
+  agent-oracle SoC gap per battery (`soc_gap_mean_kwh`, `soc_gap_max_kwh`). Rates are fractions.
 
 **Known defects** S1-S18 of 0.6.2 are listed in `docs/refactor/REFACTOR_v1.md` section 2; their
 regression tests on the new API are named `test_s<n>_*`. All 0.6.2 modules and their

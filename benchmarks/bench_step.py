@@ -10,6 +10,7 @@ Usage:
 
     python benchmarks/bench_step.py                          # local Leather scenario, 3 episodes
     python benchmarks/bench_step.py --scenario path/to/scenario --episodes 5 --observation extended
+    python benchmarks/bench_step.py --forecast mmfe_standard --horizon 12   # with forecasts
 """
 
 import argparse
@@ -66,7 +67,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         argv: Arguments; None reads `sys.argv`.
 
     Returns:
-        argparse.Namespace: `scenario`, `episodes`, `seed`, `observation`, `start`, `end`.
+        argparse.Namespace: `scenario`, `episodes`, `seed`, `observation`, `start`, `end`,
+        `forecast`, `horizon`.
     """
     parser = argparse.ArgumentParser(description=__doc__.split('\n\n', maxsplit=1)[0])
     parser.add_argument('--scenario', type=Path, default=DEFAULT_SCENARIO,
@@ -76,6 +78,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument('--observation', default='meco', help="observation preset (default 'meco')")
     parser.add_argument('--start', default=None, help='first timestamp of the period')
     parser.add_argument('--end', default=None, help='last timestamp of the period')
+    parser.add_argument('--forecast', default=None,
+                        help="forecast provider, e.g. 'perfect' or 'mmfe_standard' (default none)")
+    parser.add_argument('--horizon', type=int, default=12,
+                        help='forecast horizon in steps, with --forecast (default 12)')
     args = parser.parse_args(argv)
     if args.episodes < 1:
         parser.error('--episodes must be at least 1')
@@ -122,14 +128,16 @@ def main(argv: Sequence[str] | None = None) -> list[EpisodeTiming]:
         warnings.simplefilter('ignore', TimestampWarning)
         warnings.simplefilter('ignore', DeprecationWarning)
         env = SmartCerEnv(args.scenario, start=args.start, end=args.end,
-                          observation=args.observation)
+                          observation=args.observation, forecast=args.forecast,
+                          forecast_horizon=args.horizon if args.forecast else 0)
     construction_s = time.perf_counter() - start
 
     n_steps, n_actions = env.episode_length, env.action_space.shape[0]
     rng = np.random.default_rng(args.seed)
     print(f'scenario {env.community.name}: {len(env.community.nodes)} nodes, '
           f'{n_actions} batteries, {n_steps} steps of {env.community.delta_t} h, '
-          f'observation {args.observation!r} ({env.observation_space.shape[0]} values)')
+          f'observation {args.observation!r} ({env.observation_space.shape[0]} values)'
+          + (f', forecast {args.forecast!r}, H = {args.horizon}' if args.forecast else ''))
     print(f'construction: {construction_s:.2f} s')
     timings = []
     for episode in range(args.episodes):

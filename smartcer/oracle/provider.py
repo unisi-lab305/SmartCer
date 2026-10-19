@@ -14,9 +14,11 @@ DIISM answers; `read_oracle` is the only function that knows it):
   objective of the day as a welfare in € (section 10, larger is better). Other columns are ignored.
 
 `OracleProvider` aligns the data with a community and computes the optimal actions
-a* = p^cha / P^cha - p^dis / P^dis of every step. Rows that charge and discharge in the same step
-are counted and reported with an `OracleWarning`: a* is their net value, so the replay cannot
-reproduce them.
+a* = p^cha / P^cha - p^dis / P^dis of every step and the oracle state of charge at the start of
+every step. The file has no initial state: the MILP's S^ini is inferred from the first row of the
+file (section 5 solved for the state before the step) and must equal the scenario's
+`soc_initial`. Rows that charge and discharge in the same step are counted and reported with an
+`OracleWarning`: a* is their net value, so the replay cannot reproduce them.
 """
 
 from dataclasses import dataclass
@@ -28,6 +30,7 @@ import numpy as np
 import pandas as pd
 
 from smartcer.core.community import Community
+from smartcer.core.storage import Battery
 
 
 TRAJECTORY_FILE = 'trajectory.csv'
@@ -36,6 +39,8 @@ TRAJECTORY_COLUMNS = ('datetime', 'node_id', 'p_cha_kw', 'p_dis_kw', 'soc_kwh')
 OBJECTIVE_COLUMNS = ('date', 'objective')
 # solver round-off accepted on the sign of the powers and on |a*| ≤ 1
 TOLERANCE = 1e-9
+# largest difference between the inferred S^ini of the MILP and the scenario's soc_initial (kWh)
+SOC_INITIAL_TOLERANCE_KWH = 1e-6
 
 
 class OracleWarning(UserWarning):
@@ -228,6 +233,39 @@ def read_oracle(folder: str | Path) -> OracleData:
     return OracleData(wide['p_cha_kw'], wide['p_dis_kw'], wide['soc_kwh'], objective, str(folder))
 
 
+def _check_initial_soc(data: OracleData, node_id: str, battery: Battery, delta_t: float) -> None:
+    """
+    Check the MILP's initial state of charge of a battery against the scenario's.
+
+    The state before the first step of the file, after self-discharge, is
+    s̃ = s - η^cha p^cha Δt + p^dis Δt / η^dis (docs/FORMULATION.md section 5); it must equal
+    max(S^min, (1 - α)^Δt S^ini) (S^ini without self-discharge) within
+    `SOC_INITIAL_TOLERANCE_KWH`.
+
+    Args:
+        data: Oracle data.
+        node_id: Battery node.
+        battery: The node's battery.
+        delta_t: Duration of a step (hours).
+
+    Raises:
+        ValueError: If the two states differ, naming the node and both values.
+    """
+    first = data.soc_kwh.index[0]
+    inferred = (data.soc_kwh.at[first, node_id]
+                - battery.efficiency_charge * data.p_cha_kw.at[first, node_id] * delta_t
+                + data.p_dis_kw.at[first, node_id] * delta_t / battery.efficiency_discharge)
+    expected = battery.soc_initial_kwh if battery.alpha == 0.0 else max(
+        battery.soc_min_kwh, (1.0 - battery.alpha) ** delta_t * battery.soc_initial_kwh)
+    if abs(inferred - expected) > SOC_INITIAL_TOLERANCE_KWH:
+        discharged = '' if battery.alpha == 0.0 else f' ({expected:.6f} kWh after self-discharge)'
+        raise ValueError(
+            f'{data.source}: node {node_id!r}: the MILP starts from {inferred:.6f} kWh (inferred '
+            f'from its first step {first}), the scenario from soc_initial {battery.soc_initial} = '
+            f'{battery.soc_initial_kwh:.6f} kWh{discharged}; set soc_initial in the scenario to '
+            f'the MILP\'s initial state of charge')
+
+
 class OracleProvider:
     """
     The oracle trajectory of a community: optimal actions and states of charge per step.
@@ -239,6 +277,9 @@ class OracleProvider:
         actions: Optimal actions a* = p^cha / P^cha - p^dis / P^dis, shape (n_steps, N), in
             [-1, 1].
         soc_kwh: Oracle state of charge at the end of each step (kWh), shape (n_steps, N).
+        soc_start_kwh: Oracle state of charge at the start of each step (kWh), shape
+            (n_steps, N): the scenario's S^ini at the first step of the oracle file, else the
+            state at the end of the previous step.
         daily_objective: MILP objective per calendar day of the period (€), indexed by
             `datetime.date`, or None.
         simultaneous_rows: Rows of the period (step and node) with both p^cha > 0 and p^dis > 0.
@@ -252,14 +293,21 @@ class OracleProvider:
         discharge in the same step are counted (`simultaneous_rows`) and reported with one
         `OracleWarning` (count and first timestamp).
 
+        The MILP's initial state of charge is inferred from the first row of the file, with the
+        time step of the community: s̃ = s - η^cha p^cha Δt + p^dis Δt / η^dis is the state before
+        that step after self-discharge, and must equal max(S^min, (1 - α)^Δt S^ini) of the
+        scenario (S^ini without self-discharge) within 1e-6 kWh.
+
         Args:
             data: Oracle data (`read_oracle`).
             community: The community the oracle was computed for.
 
         Raises:
             ValueError: If the battery nodes differ, a step of the period has no oracle row, an
-                action lies outside [-1, 1] by more than 1e-9, or a day of the period has no
-                objective.
+                action lies outside [-1, 1] by more than 1e-9, the inferred initial state of
+                charge differs from the scenario's `soc_initial`, the period starts after the
+                first step of the file but the step before it has no row, or a day of the period
+                has no objective.
         """
         node_ids = community.storage_node_ids
         columns = list(data.p_cha_kw.columns)
@@ -292,11 +340,27 @@ class OracleProvider:
             raise ValueError(f'{data.source}: node {node_ids[u]!r} at {index[t]}: p_cha '
                              f'{p_cha[t, u]} kW, p_dis {p_dis[t, u]} kW exceed the power limits '
                              f'(a* = {actions[t, u]})')
+        delta_t = community.delta_t
+        first = data.soc_kwh.index[0]
+        for node_id in node_ids:
+            _check_initial_soc(data, node_id, community.node(node_id).battery, delta_t)
         self.source = data.source
         self.node_ids = tuple(node_ids)
         self.timestamps = np.asarray(community.timestamps)
         self.actions = np.clip(actions, -1.0, 1.0)
         self.soc_kwh = data.soc_kwh.loc[index, list(node_ids)].to_numpy(dtype=np.float64)
+        self.soc_start_kwh = np.empty_like(self.soc_kwh)
+        self.soc_start_kwh[1:] = self.soc_kwh[:-1]
+        if index[0] == first:
+            self.soc_start_kwh[0] = [b.soc_initial_kwh for b in batteries]
+        else:
+            before = index[0] - pd.Timedelta(hours=delta_t)
+            if before not in data.soc_kwh.index:
+                raise ValueError(f'{data.source}: the period starts at {index[0]}, after the first '
+                                 f'oracle step {first}, but the file has no row for the step '
+                                 f'before it ({before}), which gives the initial state of charge')
+            self.soc_start_kwh[0] = data.soc_kwh.loc[before, list(node_ids)].to_numpy(
+                dtype=np.float64)
         self.daily_objective = None
         if data.daily_objective is not None:
             days: list[datetime.date] = sorted(set(index.date))
@@ -337,7 +401,8 @@ class OracleProvider:
 
     def soc(self, t: int) -> np.ndarray:
         """
-        Oracle state of charge at the end of step t.
+        Oracle state of charge at the start of step t (before a*_t), comparable with the state of
+        charge an agent observes for step t.
 
         Args:
             t: Step index.
@@ -345,4 +410,4 @@ class OracleProvider:
         Returns:
             np.ndarray: One value per battery in action order (kWh, float64 copy).
         """
-        return self.soc_kwh[t].copy()
+        return self.soc_start_kwh[t].copy()

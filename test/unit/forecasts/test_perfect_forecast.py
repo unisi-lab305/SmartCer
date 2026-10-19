@@ -16,9 +16,10 @@ pytestmark = pytest.mark.unit
 
 def test_perfect_forecast_returns_the_true_future(mini_cer_v1_path: Path) -> None:
     """
-    Test that the perfect forecast of steps t..t+H-1 is the data of every node: pv_bat generates
-    10 kWh in hours 8-15, factory_bat consumes 10 kWh in hours 8-17 and 4 kWh otherwise, a
-    producer has zero load and a consumer zero generation.
+    Test that the perfect forecast of steps t..t+H-1 is the data of every node and the totals of
+    the nodes without a battery: pv_bat generates 10 kWh in hours 8-15, factory_bat consumes
+    10 kWh in hours 8-17 and 4 kWh otherwise, a producer has zero load and a consumer zero
+    generation; house_1 and shop generate 5 kWh in hours 8-15 (shop) and consume 2 + 6 = 8 kWh.
 
     Args:
         mini_cer_v1_path: Path of the 1.0-format synthetic scenario.
@@ -28,12 +29,14 @@ def test_perfect_forecast_returns_the_true_future(mini_cer_v1_path: Path) -> Non
     forecast.reset(np.random.default_rng(0))
     values = forecast.get(6, 4)
 
-    assert set(values) == {f'{n}/{q}' for n in community.node_ids
+    assert set(values) == {f'{n}/{q}' for n in (*community.node_ids, 'community')
                            for q in ('generation', 'load')}
     np.testing.assert_array_equal(values['pv_bat/generation'], [0.0, 0.0, 10.0, 10.0])
     np.testing.assert_array_equal(values['pv_bat/load'], [0.0] * 4)
     np.testing.assert_array_equal(values['factory_bat/load'], [4.0, 4.0, 10.0, 10.0])
     np.testing.assert_array_equal(values['house_1/generation'], [0.0] * 4)
+    np.testing.assert_array_equal(values['community/generation'], [0.0, 0.0, 5.0, 5.0])
+    np.testing.assert_array_equal(values['community/load'], [8.0] * 4)
     for node in community.nodes:
         np.testing.assert_array_equal(values[f'{node.node_id}/load'], node.load_kwh[6:10])
 

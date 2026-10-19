@@ -182,7 +182,7 @@ The run is configured by the arguments of `SmartCerEnv` (`smartcer.gym`), also a
 | `reward` | `'welfare'` | reward type: `'welfare'` (R_t = W_t - σ K_t), `'profit'` or `'energy'` (FORMULATION section 11) |
 | `reward_per_node` | `False` | per-node variant of `'profit'` or `'energy'`: r_u = m_u - σ k_u per battery node in `info['reward']['nodes']`, scalar reward Σ_u r_u |
 | `penalty_coefficient` | `10.0` | σ |
-| `forecast` | `None` | forecasts of the observation's `forecast` section: `'perfect'` (true future values, `smartcer.forecasts.PerfectForecast`) or a provider with `reset(rng)` and `get(t, horizon)` (`smartcer.forecasts.ForecastProvider`) |
+| `forecast` | `None` | forecasts of the observation's `forecast` section: `'perfect'` (true future values, `smartcer.forecasts.PerfectForecast`), `'mmfe_perfect'`, `'mmfe_standard'`, `'mmfe_noisy'` (simulated forecast errors, `smartcer.forecasts.MMFEForecast` with a preset, see Forecasts below) or a provider with `reset(rng)` and `get(t, horizon)` (`smartcer.forecasts.ForecastProvider`) |
 | `forecast_horizon` | `0` | forecast horizon H in steps, ≥ 1 with `forecast`; episodes then use the steps 0 … n - H - 2 of the period with `observe_current_step=True` and 0 … n - H - 1 with `False`, so that the forecasts of every step of an episode and of the step after it (terminal observation) lie in the data |
 | `oracle` | `None` | MILP oracle: an oracle folder (below) or a `smartcer.oracle.OracleProvider` of the same community; its data go to `info['privileged']` and to the `ReplayController` |
 | `seed` | `None` | seed used by the first `reset()` called without a seed |
@@ -207,14 +207,14 @@ in order:
 | price | `price/sell`, `price/buy`, €/kWh, not normalised, when all nodes share the same series; otherwise per battery node (below) | both |
 | community | `community/generation`, `community/load`: totals of the nodes without a battery | `extended` |
 | nodes | per battery node, in action order: [`<node>/sell_price`, `<node>/buy_price`], `<node>/generation`, `<node>/load`, [`<node>/generation_lookback`, `<node>/load_lookback`: `lookback` values, most recent first], `<node>/soc` (scaled to [S^min, S^max]), `<node>/a_lower`, `<node>/a_upper` | both (lookback: `extended`) |
-| forecast | with `forecast`, per battery node in action order: `forecast/<node>/generation`, `forecast/<node>/load`, H values each, ordered by lead time: steps t + 1 … t + H with `observe_current_step=True`, t … t + H - 1 with `False` (FORMULATION section 12); empty without `forecast` | both |
+| forecast | with `forecast`, H values per feature, ordered by lead time: steps t + 1 … t + H with `observe_current_step=True`, t … t + H - 1 with `False` (FORMULATION section 12). In order: the sale price, `forecast/price_sell` when all nodes share the same prices, otherwise `forecast/<node>/sell_price` per battery node (€/kWh, not normalised, known over the horizon: no error); `forecast/community/generation`, `forecast/community/load` (totals of the nodes without a battery, e.g. aggregated consumers, each only if such nodes have it); per battery node in action order `forecast/<node>/generation`, `forecast/<node>/load`. The purchase price is not forecast. Empty without `forecast` | both |
 
 Generation and load (also the community totals, the lookback and the forecasts, which use the
-bounds of `<node>/generation` and `<node>/load`) are min-max scaled with the
-bounds of the training window `normalizer_window` and clipped to [0, 1], so that values beyond the
-training range (e.g. in a test period) stay inside the space; `info['obs_clipped']` counts them.
-The forecast provider is reset with `env.np_random` at every `reset()`, so that a stochastic
-provider is reproducible from the seed.
+bounds of the current quantity: `<node>/generation`, `community/load`, ...) are min-max scaled
+with the bounds of the training window `normalizer_window` and clipped to [0, 1], so that values
+beyond the training range (e.g. in a test period) stay inside the space; `info['obs_clipped']`
+counts them. The forecast provider is reset with `env.np_random` at every `reset()`, so that a
+stochastic provider is reproducible from the seed.
 With `observe_current_step=False`
 they are those of step t - 1; values before the first row of the data are 0. Save the normaliser of
 a training environment and pass it to the evaluation one:
@@ -224,6 +224,65 @@ train = SmartCerEnv('path/to/scenario', end='2022-09-30 23:00')
 train.normalizer.save('normalizer.json')    # bounds, window and scenario name
 test = SmartCerEnv('path/to/scenario', start='2022-10-01 00:00', normalizer='normalizer.json')
 ```
+
+### Forecasts
+
+A provider returns, for the H steps after the last observed one, the generation and load of every
+battery node (`'<node>/generation'`, `'<node>/load'`) and the community totals
+(`'community/generation'`, `'community/load'`), in kWh per step. `PerfectForecast` returns the true
+values. `MMFEForecast(community, parameters)` simulates forecast errors with the martingale model
+of forecast evolution (MMFE):
+
+- for every series and target step τ, H innovations ε_{τ,1}, …, ε_{τ,H} are drawn once per
+  episode; the forecast of τ issued h steps before τ is observed (lead time h, the k-th value of
+  the section has h = k + 1) carries the error e_τ(h) = ε_{τ,1} + … + ε_{τ,h}. The error variance
+  is therefore linear in the lead time, and successive issues for the same target are consistent:
+  each step reveals one innovation, and the true value is observed at lead time 0;
+- each innovation is ε = b + σ (√ρ z + √(1 − ρ) ξ), with ξ standard normal, independent per
+  series, and z a standard normal factor common to all series of the same quantity (generation or
+  load; the two quantities have independent factors), AR(1) over the target steps:
+  z_τ = φ z_{τ−1} + √(1 − φ²) η_τ. Two nodes have error correlation ρ; adjacent target steps have
+  error correlation ρ φ;
+- generation (photovoltaic): ŷ = min(max(y + r_τ e, 0), y^max), with r_τ the reference profile of
+  the series (its mean over the steps of the same calendar month at the same time of day) and
+  y^max the largest value of the series in the period. Where r_τ = 0 (night) the forecast is 0;
+- load: ŷ = max(y (1 + e), 0), a multiplicative error;
+- the noise is drawn from a generator spawned from `env.np_random` at every `reset()`: the same
+  seed gives the same forecasts, every new episode new errors. Innovations are drawn lazily, as the
+  episode moves forward.
+
+| Parameter (`MMFEParameters`) | Meaning |
+|---|---|
+| `sigma_generation` | σ of a generation innovation, fraction of the reference profile r_τ |
+| `sigma_load` | σ of a load innovation, fraction of the load |
+| `rho` | share ρ of the innovation variance due to the common factor, in [0, 1] |
+| `phi` | AR(1) coefficient φ of the common factor over the target steps, in (−1, 1) |
+| `bias_generation`, `bias_load` | mean b of an innovation, in the units of σ's fraction (default 0); the mean error at lead time h is h b |
+
+Presets (`MMFE_PRESETS`, environment names `'mmfe_<preset>'`). **The values are provisional,
+pending calibration on forecast data**; with H = 12 they give an error standard deviation at lead
+time 12 of σ √12:
+
+| Preset | `sigma_generation` | `sigma_load` | `rho` | `phi` | Error std at lead 12 (generation / load) |
+|---|---|---|---|---|---|
+| `perfect` | 0 | 0 | 0 | 0 | 0 / 0 (true values) |
+| `standard` (provisional) | 0.07 | 0.03 | 0.5 | 0.8 | 24 % of r_τ / 10 % of the load |
+| `noisy` (provisional) | 0.15 | 0.08 | 0.7 | 0.9 | 52 % of r_τ / 28 % of the load |
+
+Custom parameters:
+
+```python
+from smartcer.data import load_scenario
+from smartcer.forecasts import MMFEForecast, MMFEParameters
+
+community = load_scenario('path/to/scenario')
+forecast = MMFEForecast(community, MMFEParameters(sigma_generation=0.1, sigma_load=0.05,
+                                                  rho=0.6, phi=0.85))
+env = SmartCerEnv(community, forecast=forecast, forecast_horizon=12)
+```
+
+`env.run_config()` records the provider name and, for MMFE, its preset and parameters
+(`forecast_config`).
 
 ### Info
 
@@ -237,9 +296,10 @@ requested and applied action, bounds). `privileged` holds data for the critic on
 of the observation it comes with (the step of the next action; for the terminal observation the
 step after the episode, or its last step at the end of the data). It is empty without `oracle` and `forecast`; otherwise it holds `t` (that
 step), with `oracle` `oracle_action` (a\*_t, one value per battery in action order) and
-`oracle_soc` (the oracle state of charge at the end of step t, kWh), and with `forecast`
-`true_future` (`'<node>/<quantity>'` → the true values of the observed forecast steps, kWh per
-step). `obs_clipped` is the number of values of the returned
+`oracle_soc` (the oracle state of charge at the start of step t, kWh, comparable with the observed
+state of charge: S^ini at the first step of the oracle file, else the oracle state at the end of
+step t - 1), and with `forecast` `true_future` (`'<node>/<quantity>'` and
+`'community/<quantity>'` → the true values of the observed forecast steps, kWh per step). `obs_clipped` is the number of values of the returned
 observation that were clipped to [0, 1] because they lie outside the normaliser's training range
 (the zeros before the first row of the data are not counted); it is 0 when the normaliser is fitted
 on the whole period.
@@ -279,7 +339,7 @@ kpis = compute_baselines(env, 'results/baselines/my_run', seed=0)   # 'naive', '
 | File | Content |
 |---|---|
 | `<controller>/community.csv` | one row per step: `datetime`, `episode`, `t`, `reward`, `reward_main`, `reward_penalty`, `welfare`, `revenue`, `cost`, `storage_cost`, `incentive`, `shared_energy_kwh`, `export_kwh`, `import_kwh`, `penalty` (K_t), `obs_clipped` |
-| `<controller>/nodes/<node>.csv` | one row per step: `datetime`, `episode`, `t` and the node's flows, economics, state of charge, requested and applied action, bounds, k (and the node reward with `reward_per_node`) |
+| `<controller>/nodes/<node>.csv` | one row per step: `datetime`, `episode`, `t` and the node's flows, economics, state of charge, requested and applied action, bounds, k (and the node reward with `reward_per_node`); for a battery node of an environment with `oracle`, also `oracle_soc_kwh` (the oracle state of charge at the end of the step, the instant of `soc_kwh`) and `soc_gap_kwh` = `soc_kwh` - `oracle_soc_kwh`, summarised in the KPIs as `soc_gap_mean_kwh` and `soc_gap_max_kwh` (absolute gap) |
 | `<controller>/kpis.json` | KPIs of the episode (`smartcer/gym/metrics/KPI.md`) |
 | `<controller>/run_config.json` | `env.run_config()`: version, scenario, period, episode, observation and reward settings, controller |
 | `kpis.json` | KPIs of every controller |
@@ -308,10 +368,20 @@ step and rejects |a\*| > 1 + 1e-9. Rows of the period with both `p_cha_kw` > 0 a
 reproduce them: they are counted (`OracleProvider.simultaneous_rows`) and reported with one
 `smartcer.oracle.OracleWarning` naming the count and the first timestamp.
 
+The file has no initial state of charge. The MILP's S^ini is inferred from the first row of the
+file, s̃ = `soc_kwh` - η^cha `p_cha_kw` Δt + `p_dis_kw` Δt / η^dis (FORMULATION section 5 solved
+for the state before the step), and must equal the scenario's S^ini (`soc_initial`, after
+self-discharge when α > 0) within 1e-6 kWh; otherwise `OracleProvider` raises `ValueError` naming
+the node and both values. A period that starts after the first step of the file starts from the
+oracle state at the end of the step before it, which must be in the file.
+
 `check_replay` plays a\* over the whole period with the `ReplayController` (create the environment
 without `episode_length` and forecasts) and checks that K_t ≤ 1e-9 at every step and, with an
 objective, that the cumulative welfare lies within `rtol` (default 1e-3) of the cumulative
-objective. The period must be made of whole days (first step at 00:00, last step ending at
+objective. An oracle action beyond a dynamic bound by at most 1e-6 kWh (`REPLAY_TOLERANCE_KWH`,
+measured as energy on the node side: (a\* - A^upper) P^cha Δt or (-a\* - A^lower) P^dis Δt) is
+solver round-off: the controller moves it onto the bound, without penalty, and counts it; larger
+violations are clipped and penalised by the environment and fail the check. The period must be made of whole days (first step at 00:00, last step ending at
 24:00), so that every replayed day is compared with a whole MILP day; otherwise it raises
 `ValueError`:
 
@@ -326,7 +396,7 @@ result = check_replay(env, 'results/oracle_replay', rtol=1e-3)   # ReplayCheck; 
 | File | Content |
 |---|---|
 | `oracle_daily.csv` | one row per day: `date`, `welfare` of the replay and, with an objective, `objective` and `difference` = welfare - objective |
-| `oracle_replay.json` | the `ReplayCheck` fields (steps, penalty maximum and steps, largest state-of-charge difference from the oracle, oracle rows with simultaneous charge and discharge, welfare, objective, relative gap, rtol, Fit Score of the daily welfare against the objective, passed) and the run configuration |
+| `oracle_replay.json` | the `ReplayCheck` fields (steps, penalty maximum and steps, largest state-of-charge difference from the oracle, oracle rows with simultaneous charge and discharge, actions moved onto a bound within the tolerance (`clipped_rows`) and the largest such violation (`clipped_max_kwh`), welfare, objective, relative gap, rtol, Fit Score of the daily welfare against the objective, passed) and the run configuration |
 
 `compute_baselines(env, folder, controllers=['naive', 'rbc_community', 'replay'])` also writes the
 tables of the replay. The replay test of the test suite looks for oracle folders in

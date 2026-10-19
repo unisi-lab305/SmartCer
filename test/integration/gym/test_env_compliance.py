@@ -19,8 +19,8 @@ pytestmark = pytest.mark.integration
 def test_gymnasium_check_env_passes(mini_cer_v1_path: Path, synthetic_oracle: Path) -> None:
     """
     Test that the Gymnasium environment checker accepts the environment, with fixed and random
-    episode starts, both information timings, both presets, a per-node reward, and forecasts with
-    an oracle.
+    episode starts, both information timings, both presets, a per-node reward, perfect and MMFE
+    forecasts (whose noise must be reproducible from the reset seed) and an oracle.
 
     Args:
         mini_cer_v1_path: Path of the 1.0-format synthetic scenario.
@@ -28,6 +28,9 @@ def test_gymnasium_check_env_passes(mini_cer_v1_path: Path, synthetic_oracle: Pa
     """
     check_env(gym.make(ENV_ID, scenario=mini_cer_v1_path, forecast='perfect', forecast_horizon=6,
                        oracle=synthetic_oracle, episode_length=12, random_start=True).unwrapped)
+    check_env(gym.make(ENV_ID, scenario=mini_cer_v1_path, forecast='mmfe_noisy',
+                       forecast_horizon=12, oracle=synthetic_oracle, observation='extended',
+                       observe_current_step=False, episode_length=12, random_start=True).unwrapped)
     check_env(gym.make(ENV_ID, scenario=mini_cer_v1_path).unwrapped)
     check_env(gym.make(ENV_ID, scenario=mini_cer_v1_path, episode_length=12, random_start=True,
                        observe_current_step=False).unwrapped)
@@ -38,7 +41,8 @@ def test_gymnasium_check_env_passes(mini_cer_v1_path: Path, synthetic_oracle: Pa
 
 def test_stable_baselines3_check_env_passes(mini_cer_v1_path: Path) -> None:
     """
-    Test that the Stable-Baselines3 environment checker accepts the environment.
+    Test that the Stable-Baselines3 environment checker accepts the environment, also with MMFE
+    forecasts.
 
     Args:
         mini_cer_v1_path: Path of the 1.0-format synthetic scenario.
@@ -46,6 +50,8 @@ def test_stable_baselines3_check_env_passes(mini_cer_v1_path: Path) -> None:
     env_checker = pytest.importorskip('stable_baselines3.common.env_checker')
 
     env_checker.check_env(SmartCerEnv(mini_cer_v1_path), warn=True)
+    env_checker.check_env(SmartCerEnv(mini_cer_v1_path, forecast='mmfe_standard',
+                                      forecast_horizon=12), warn=True)
 
 
 def test_s3_gym_make_reset_and_step(mini_cer_v1_path: Path) -> None:

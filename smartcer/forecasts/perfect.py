@@ -5,12 +5,13 @@ Perfect forecast: the true future values of the scenario data.
 import numpy as np
 
 from smartcer.core.community import Community
-from smartcer.forecasts.base import FORECAST_QUANTITIES
+from smartcer.forecasts.base import FORECAST_QUANTITIES, check_steps, community_totals
 
 
 class PerfectForecast:
     """
-    Forecast provider that returns the true generation and load of every node.
+    Forecast provider that returns the true generation and load of every node and the community
+    totals of the nodes without a battery (`community_totals`).
 
     Generation is zero for a consumer and load is zero for a producer, as in the node data.
 
@@ -26,11 +27,12 @@ class PerfectForecast:
             community: The community whose data are forecast.
         """
         self.n_steps = community.n_steps
-        self._keys = tuple(f'{node.node_id}/{quantity}' for node in community.nodes
-                           for quantity in FORECAST_QUANTITIES)
+        series = {f'{node.node_id}/{quantity}': getattr(node, f'{quantity}_kwh')
+                  for node in community.nodes for quantity in FORECAST_QUANTITIES}
+        series.update(community_totals(community))
+        self._keys = tuple(series)
         # one row per key, so that a forecast is a single copy
-        self._data = np.vstack([getattr(node, f'{quantity}_kwh') for node in community.nodes
-                                for quantity in FORECAST_QUANTITIES])
+        self._data = np.vstack(list(series.values()))
 
     def __repr__(self) -> str:
         return f'PerfectForecast({len(self._keys)} series, {self.n_steps} steps)'
@@ -53,14 +55,10 @@ class PerfectForecast:
 
         Returns:
             dict[str, np.ndarray]: `'<node_id>/generation'` and `'<node_id>/load'` of every node
-            → copies of the H values (kWh per step).
+            and the community totals → copies of the H values (kWh per step).
 
         Raises:
             ValueError: If the horizon is not positive or the steps leave the period.
         """
-        if horizon < 1:
-            raise ValueError(f'horizon must be at least 1, got {horizon}')
-        if t < 0 or t + horizon > self.n_steps:
-            raise ValueError(f'forecast of steps {t}..{t + horizon - 1} leaves the period of '
-                             f'{self.n_steps} steps')
+        check_steps(t, horizon, self.n_steps)
         return dict(zip(self._keys, self._data[:, t:t + horizon].copy()))

@@ -17,10 +17,15 @@ lookback, normaliser). Sections, in this order:
   `<node_id>/load`, [`extended` with lookback L: `<node_id>/generation_lookback`,
   `<node_id>/load_lookback`, L values each, most recent first], `<node_id>/soc` (scaled to
   [S^min, S^max] → [0, 1]), `<node_id>/a_lower`, `<node_id>/a_upper` (in [0, 1]);
-- `forecast` (with a forecast provider and horizon H): per battery node, in `storage_node_ids`
-  order, `forecast/<node_id>/generation` and `forecast/<node_id>/load`, H values each, ordered by
-  lead time (the first value is the step after the last observed one), scaled with the bounds of
-  `<node_id>/generation` and `<node_id>/load`; empty without a provider.
+- `forecast` (with a forecast provider and horizon H), H values per feature, ordered by lead time
+  (the first value is the step after the last observed one): the sale price, known over the
+  horizon and not normalised, as `forecast/price_sell` with global prices, otherwise as
+  `forecast/<node_id>/sell_price` per battery node; `forecast/community/generation` and
+  `forecast/community/load` (the totals of the nodes without a battery, each only if such nodes
+  have it); per battery node, in `storage_node_ids` order, `forecast/<node_id>/generation` and
+  `forecast/<node_id>/load`. Generation and load forecasts come from the provider and are scaled
+  with the bounds of the current quantity (`community/generation`, `<node_id>/load`, ...). The
+  purchase price is not forecast. Empty without a provider.
 
 Preset `meco` is [M24] Tab. II. Generation and load (also the aggregates, the lookback and the
 forecasts) are min-max scaled with a `MinMaxNormalizer` fitted on a training window and clipped to
@@ -45,7 +50,7 @@ import numpy as np
 import pandas as pd
 
 from smartcer.core.community import Community
-from smartcer.forecasts import FORECAST_QUANTITIES, ForecastProvider
+from smartcer.forecasts import COMMUNITY_PREFIX, ForecastProvider, forecast_series
 from smartcer.gym.observation.encoders import cyclical, one_hot
 from smartcer.gym.observation.normalizers import MinMaxNormalizer
 
@@ -68,19 +73,7 @@ def scaled_series(community: Community) -> dict[str, np.ndarray]:
         and `community/generation`, `community/load` (totals of the nodes without a battery that
         have generation or load).
     """
-    series: dict[str, np.ndarray] = {}
-    for node_id in community.storage_node_ids:
-        node = community.node(node_id)
-        series[f'{node_id}/generation'] = node.generation_kwh
-        series[f'{node_id}/load'] = node.load_kwh
-    others = [n for n in community.nodes if n.battery is None]
-    generators = [n.generation_kwh for n in others if n.node_type != 'consumer']
-    loads = [n.load_kwh for n in others if n.node_type != 'producer']
-    if generators:
-        series['community/generation'] = np.sum(generators, axis=0)
-    if loads:
-        series['community/load'] = np.sum(loads, axis=0)
-    return series
+    return forecast_series(community)
 
 
 def window_mask(timestamps: np.ndarray, window: tuple[Any, Any] | None) -> np.ndarray:
@@ -136,6 +129,28 @@ def fit_normalizer(community: Community,
                                 scenario=community.name)
 
 
+def ahead(series: np.ndarray, offset: int, horizon: int) -> np.ndarray:
+    """
+    The values of the steps t + offset, ..., t + offset + horizon - 1 at every step t, 0 after the
+    last row.
+
+    Args:
+        series: Values.
+        offset: Shift of the first value, ≥ 0.
+        horizon: Number of values per step.
+
+    Returns:
+        np.ndarray: Shape (len(series), horizon).
+    """
+    n = len(series)
+    out = np.zeros((n, horizon))
+    for k in range(horizon):
+        shift = offset + k
+        if shift < n:
+            out[:n - shift, k] = series[shift:]
+    return out
+
+
 def lagged(series: np.ndarray, lag: int) -> np.ndarray:
     """
     Series shifted by `lag` steps: value of step t - lag at step t, 0 before the first row.
@@ -173,7 +188,8 @@ class ObservationBuilder:
             row of the data are not counted), without the forecasts.
         forecast: Forecast provider, or None.
         horizon: Forecast horizon H in steps (0 without a provider).
-        forecast_keys: `'<node_id>/<quantity>'` of the forecasts in the observation, in order.
+        forecast_keys: Provider keys of the forecasts in the observation, in order
+            (`'community/<quantity>'`, then `'<node_id>/<quantity>'`).
         last_clipped: Clipped values of the last built observation, forecasts included.
     """
 
@@ -310,11 +326,19 @@ class ObservationBuilder:
 
         self.forecast = forecast
         self.horizon = int(horizon)
-        self.forecast_keys = tuple(f'{node.node_id}/{quantity}' for node in self._battery_nodes
-                                   for quantity in FORECAST_QUANTITIES) \
-            if forecast is not None else ()
         self._forecast_offset = 1 if observe_current_step else 0
-        if self.forecast_keys:
+        self.forecast_keys: tuple[str, ...] = ()
+        if forecast is not None:
+            # the sale price is known over the horizon: static, exact and not normalised
+            prices = [('forecast/price_sell', sellers[0].sell_price)] if self.global_prices \
+                else [(f'forecast/{node.node_id}/sell_price', node.sell_price)
+                      for node in self._battery_nodes]
+            for name, values in prices:
+                add('forecast', name, ahead(values, self._forecast_offset, self.horizon),
+                    values.min(), values.max())
+            community_keys = [k for k in series if k.startswith(f'{COMMUNITY_PREFIX}/')]
+            self.forecast_keys = (*community_keys,
+                                  *(k for k in series if k not in community_keys))
             # placeholders, filled at every step from the provider
             zeros = np.zeros((community.n_steps, self.horizon))
             slices = [add('forecast', f'forecast/{key}', zeros, 0.0, 1.0)
