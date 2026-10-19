@@ -1264,6 +1264,10 @@ questions.
   - Replay of the synthetic oracle (phase 7 acceptance) → still passed. DIISM replay → skipped,
     no files.
   - `make test-coverage` → 335 passed, 1 skipped (DIISM), coverage 97 % (`mmfe.py` 98 %).
+  - CI run 39311119905 on `f1cf690` (pull request #11) → success:
+    - unit: 268 passed;
+    - integration: 59 passed, 9 skipped (local data absent);
+    - coverage: 97 %.
   - Speed, Leather year, random actions, `meco`, 7 episodes, median:
 
     | Forecast | Values | µs per step | s per year |
