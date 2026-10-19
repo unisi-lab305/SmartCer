@@ -6,9 +6,10 @@ Validation errors name the node, the file, the column and the first offending ro
 number, header = line 1).
 
 Timestamps: in the 1.0 format they must be sorted, unique, spaced by delta_t and identical across
-nodes (errors otherwise). In the 0.6.2 format rows are aligned by position, as 0.6.2 did, and the
-community timestamps are those of the first node; irregularities are reported in one
-`TimestampWarning`, and all nodes must have the same number of rows in the period.
+nodes (errors otherwise). In the 0.6.2 format rows are aligned by position, as 0.6.2 did: every
+file must have the same number of rows, the period is selected on the timestamps of the first node
+and every node is cut at the same rows, and the community timestamps are those of the first node;
+irregularities are reported in one `TimestampWarning`.
 """
 
 import json
@@ -94,6 +95,9 @@ def load_scenario(path: str | Path, start: TimestampLike = None,
     tables: dict[Path, pd.DataFrame] = {}
     selections: list[pd.DataFrame] = []
     irregularities: list[str] = []
+    # 0.6.2 format: rows of the period, selected on the first node's timestamps
+    positions: pd.Index | None = None
+    first_rows = 0
     for node_config in config.nodes:
         table = _read_table(node_config.csv_path, tables, f'node {node_config.node_id!r}')
         label = f'node {node_config.node_id!r} ({_display(node_config.csv_path, config.path)})'
@@ -106,7 +110,17 @@ def load_scenario(path: str | Path, start: TimestampLike = None,
         if problems and strict:
             raise ValueError(f'{label}: {problems[0]}')
         irregularities += [f'{label}: {problem}' for problem in problems[:_MAX_LISTED]]
-        selection = _select_period(table, start_ts, end_ts, label)
+        if strict:
+            selection = _select_period(table, start_ts, end_ts, label)
+        elif positions is None:
+            selection = _select_period(table, start_ts, end_ts, label)
+            positions, first_rows = selection.index, len(table)
+        elif len(table) != first_rows:
+            raise ValueError(f'{label}: {len(table)} rows, node {config.nodes[0].node_id!r} has '
+                             f'{first_rows}; the 0.6.2 format aligns the nodes by row position, so '
+                             f'every file needs the same number of rows')
+        else:
+            selection = table.loc[positions]
         optional = tuple(c for c in OPTIONAL_COLUMNS[node_config.node_type] if c in table.columns)
         _check_values(selection, required + optional, label)
         selections.append(selection)

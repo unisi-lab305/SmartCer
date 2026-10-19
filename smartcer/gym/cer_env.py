@@ -13,7 +13,9 @@ from typing import Any
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
+import pandas as pd
 
+import smartcer
 from smartcer.core.community import Community, CommunityStep
 from smartcer.data import load_scenario
 from smartcer.gym.observation import MinMaxNormalizer, ObservationBuilder, fit_normalizer
@@ -35,6 +37,7 @@ class SmartCerEnv(gym.Env):
 
     Attributes:
         community: The scenario's community (nodes, batteries, incentive, timestamps).
+        scenario_path: Scenario folder, or None when the environment was built from a `Community`.
         storage_node_ids: Identifiers of the battery nodes, in action order.
         obs_layout: Feature name → slice of the observation vector.
         normalizer: Min-max normaliser of the observed generation and load (save it with
@@ -99,8 +102,10 @@ class SmartCerEnv(gym.Env):
             if start is not None or end is not None:
                 raise ValueError('start and end apply only when scenario is a folder')
             community = scenario
+            self.scenario_path = None
         else:
             community = load_scenario(scenario, start=start, end=end)
+            self.scenario_path = Path(scenario)
         self._reward = make_reward(reward, community.storage_node_ids,
                                    penalty_coefficient=penalty_coefficient,
                                    per_node=reward_per_node)
@@ -131,6 +136,7 @@ class SmartCerEnv(gym.Env):
         self.observation_space = self._builder.space
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(len(self.storage_node_ids),),
                                        dtype=np.float32)
+        self._seed = seed
         self._default_seed = seed
         self._t = 0
         self._episode_start = 0
@@ -159,6 +165,40 @@ class SmartCerEnv(gym.Env):
         return (f'SmartCerEnv({self.community.name!r}, {len(self.storage_node_ids)} batteries, '
                 f'episode_length={self.episode_length})')
 
+    @property
+    def current_step(self) -> int:
+        """Index of the step the next action applies to (the last step once the episode ends)."""
+        return self._t
+
+    def run_config(self) -> dict[str, Any]:
+        """
+        The run configuration, JSON-serialisable, for the output files of a run.
+
+        Returns:
+            dict[str, Any]: SmartCer version, scenario name and folder, period, time step, episode
+            settings, seed, observation settings and normaliser window, reward settings.
+        """
+        timestamps = self.community.timestamps
+        return {
+            'smartcer_version': smartcer.__version__,
+            'scenario': self.community.name,
+            'scenario_path': None if self.scenario_path is None else str(self.scenario_path),
+            'start': str(pd.Timestamp(timestamps[0])),
+            'end': str(pd.Timestamp(timestamps[-1])),
+            'delta_t': self.community.delta_t,
+            'episode_length': self.episode_length,
+            'random_start': self.random_start,
+            'seed': self._seed,
+            'observe_current_step': self.observe_current_step,
+            'observation': self._builder.preset,
+            'lookback': self._builder.lookback,
+            'normalizer_window': None if self.normalizer.window is None
+            else list(self.normalizer.window),
+            'reward': self.reward_type,
+            'reward_per_node': self.reward_per_node,
+            'penalty_coefficient': self.penalty_coefficient,
+        }
+
     def _info(self, t: int) -> dict[str, Any]:
         """
         Info common to reset and step.
@@ -184,7 +224,8 @@ class SmartCerEnv(gym.Env):
 
         Returns:
             tuple[np.ndarray, dict[str, Any]]: First observation and info (`t`, `timestamp`,
-            `privileged`, `episode_start`, `episode_end`).
+            `privileged`, `episode_start`, `episode_end`, `obs_clipped`: values of the observation
+            clipped to [0, 1] because they lie outside the normaliser's training range).
         """
         if seed is None and self._default_seed is not None:
             seed, self._default_seed = self._default_seed, None
@@ -198,7 +239,8 @@ class SmartCerEnv(gym.Env):
         self._needs_reset = False
         self.community.reset()
         info = self._info(start)
-        info.update(episode_start=start, episode_end=self._episode_end)
+        info.update(episode_start=start, episode_end=self._episode_end,
+                    obs_clipped=int(self._builder.clipped[start]))
         return self._builder.build(start), info
 
     def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
@@ -211,7 +253,9 @@ class SmartCerEnv(gym.Env):
         Returns:
             tuple[np.ndarray, float, bool, bool, dict[str, Any]]: Observation of the next step (of
             the same step at the end of the episode), reward R_t, terminated (always False),
-            truncated (True on the last step of the episode) and info.
+            truncated (True on the last step of the episode) and info (see `_step_info`, plus
+            `obs_clipped`: values of the returned observation clipped to [0, 1] because they lie
+            outside the normaliser's training range).
 
         Raises:
             RuntimeError: If called before `reset()` or after the end of the episode.
@@ -237,7 +281,9 @@ class SmartCerEnv(gym.Env):
         else:
             self._t = t + 1
         obs = self._builder.build(self._t)
-        return obs, float(reward.total), False, truncated, self._step_info(result, clipped, reward)
+        info = self._step_info(result, clipped, reward)
+        info['obs_clipped'] = int(self._builder.clipped[self._t])
+        return obs, float(reward.total), False, truncated, info
 
     def _step_info(self, result: CommunityStep, action: np.ndarray,
                    reward: RewardBreakdown) -> dict[str, Any]:

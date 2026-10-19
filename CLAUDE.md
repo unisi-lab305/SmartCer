@@ -12,10 +12,10 @@ controls the batteries.
 
 **Status:** version 0.6.2 is being refactored into 1.0.0 following
 [docs/refactor/REFACTOR_v1.md](docs/refactor/REFACTOR_v1.md); progress, deviations and open
-questions are in [docs/refactor/PROGRESS.md](docs/refactor/PROGRESS.md). Phases 0-4 are complete:
-the Gymnasium environment `SmartCer-v1` (`smartcer/gym/`, with its rewards and observation presets)
-wraps the 1.0 physics and economics (`smartcer/core/`) and the scenario loader (`smartcer/data/`);
-the 0.6.2 environment and models were removed. Still from 0.6.2 until phase 5: `smartcer/cer_metrics/` and `smartcer/storage_controllers/`.
+questions are in [docs/refactor/PROGRESS.md](docs/refactor/PROGRESS.md). Phases 0-5 are complete:
+the Gymnasium environment `SmartCer-v1` (`smartcer/gym/`, with its rewards, observation presets,
+baseline controllers, results tracking and KPIs) wraps the 1.0 physics and economics
+(`smartcer/core/`) and the scenario loader (`smartcer/data/`); all 0.6.2 modules were removed.
 Scenario and run arguments: [docs/CONFIG.md](docs/CONFIG.md).
 
 **Authoritative formulation:** [docs/FORMULATION.md](docs/FORMULATION.md) defines the physics, the
@@ -144,8 +144,9 @@ Five slash commands are available in `.claude/commands/`:
   2. Integration tests (`make test-integration`)
   3. Coverage report (`make test-coverage`), uploaded as an artifact (HTML + XML)
   4. Builds the wheel, installs it in a clean virtual environment and imports `smartcer`,
-     `smartcer.core`, `smartcer.data`, `smartcer.gym` and `smartcer.storage_controllers` from
-     outside the repository (guards defect S1, missing subpackages)
+     `smartcer.core`, `smartcer.data`, `smartcer.gym`, `smartcer.gym.controllers`,
+     `smartcer.gym.metrics` and `smartcer.gym.tracking` from outside the repository (guards
+     defect S1, missing subpackages)
 - **View results**: `https://github.com/unisi-lab305/SmartCer/actions`
 
 **GitHub Release** (`.github/workflows/release.yml`):
@@ -196,7 +197,7 @@ Git tags mark released versions (`vX.Y.Z`). `v0.6.2` marks the code before the r
 
 ```
 SmartCer/
-├── smartcer/                       # package (0.6.2 code)
+├── smartcer/                       # package
 │   ├── __init__.py                 # __version__, registration of SmartCer-v1
 │   ├── core/                       # 1.0 physics and economics, no Gymnasium import
 │   │   ├── storage/                # base.py (StorageSystem), battery.py (Battery, BatteryStep)
@@ -210,11 +211,16 @@ SmartCer/
 │   │   │                           # run_config.py (map_v062_run_config)
 │   │   ├── observation/            # encoders.py, normalizers.py (MinMaxNormalizer), schema.py
 │   │   │                           # (ObservationBuilder, presets meco and extended, fit_normalizer)
-│   │   └── rewards/                # base.py (RewardCalculator, RewardBreakdown), calculators.py
-│   │                               # (welfare, profit, energy), config.py (REWARD_REGISTRY,
-│   │                               # make_reward)
-│   ├── cer_metrics/                # 0.6.2: scores.py (compute_kpis), KPI.md (until phase 5)
-│   ├── storage_controllers/        # 0.6.2: abc_controller.py, rbc_controller.py (until phase 5)
+│   │   ├── rewards/                # base.py (RewardCalculator, RewardBreakdown), calculators.py
+│   │   │                           # (welfare, profit, energy), config.py (REWARD_REGISTRY,
+│   │   │                           # make_reward)
+│   │   ├── controllers/            # base.py (Controller), naive.py (NaiveController), rbc.py
+│   │   │                           # (RBCController), baselines.py (CONTROLLERS, run_episode,
+│   │   │                           # compute_baselines)
+│   │   ├── tracking/               # tracker.py (ResultsTracker, TrackResults wrapper),
+│   │   │                           # callback.py (ResultsCallback, Stable-Baselines3)
+│   │   └── metrics/                # kpi.py (compute_kpis), fit_score.py (fit_score,
+│   │                               # daily_welfare), KPI.md (formulas and units)
 │   └── cer_data/                   # local scenarios (gitignored, read-only)
 ├── test/
 │   ├── conftest.py                 # shared fixtures, description of the synthetic scenario
@@ -224,18 +230,20 @@ SmartCer/
 │   ├── unit/core/                  # layer rules of smartcer/core/; storage/, nodes/, community/
 │   ├── unit/data/                  # schema and loader on small scenarios written to tmp_path
 │   ├── unit/gym/                   # observation features, normaliser, rewards, run configuration,
-│   │                               # actions and arguments
-│   ├── unit/v062/                  # known defect S6 of the 0.6.2 controller (until phase 5)
+│   │                               # actions and arguments, controllers, tracker, KPIs, Fit Score
 │   ├── integration/data/           # mini_cer in both formats; Leather and the 0.6.2 reference
 │   └── integration/gym/            # check_env (Gymnasium, SB3), episodes, rewards, timing,
-│                                       # normaliser window and one year in the space, SAC (slow)
+│                                   # normaliser window and one year in the space, baselines,
+│                                   # SB3 results callback, SAC (slow)
 ├── docs/                           # FORMULATION.md, CONFIG.md, refactor/REFACTOR_v1.md,
 │                                   # refactor/PROGRESS.md
 ├── .claude/commands/               # slash commands
 └── .github/workflows/              # ci.yml, release.yml
 ```
 
-The rest of the target 1.0 structure (controllers, tracking, metrics, forecasts, oracle) is in `docs/refactor/REFACTOR_v1.md` section 4; add it here only as it is created.
+Run outputs go to a folder chosen by the caller, e.g. `results/` (gitignored). The rest of the
+target 1.0 structure (forecasts, oracle, benchmarks) is in `docs/refactor/REFACTOR_v1.md` section
+4; add it here only as it is created.
 
 ## Code Architecture
 
@@ -302,8 +310,9 @@ Node(node_id, node_type, delta_t, generation_kwh, load_kwh, sell_price, buy_pric
   `action_requested`, `action_applied`, `a_upper`, `a_lower`.
 - `TipIncentive` holds the per-step, per-node coefficients (0 for nodes without a plant) and
   `potential(t, export)`; its incentive divides by the total export of all nodes.
-- Loader: 1.0 scenarios are validated strictly; 0.6.2 scenarios are aligned by position and their
-  timestamp irregularities raise a `TimestampWarning` (docs/CONFIG.md section 4).
+- Loader: 1.0 scenarios are validated strictly; 0.6.2 scenarios are aligned by position (the
+  period is selected on the first node's timestamps and every node is cut at the same rows) and
+  their timestamp irregularities raise a `TimestampWarning` (docs/CONFIG.md section 4).
 
 ### Environment (1.0), `smartcer/gym/`
 
@@ -313,7 +322,8 @@ SmartCerEnv(scenario, start=None, end=None, episode_length=None, random_start=Fa
             normalizer_window=None, reward='welfare', reward_per_node=False,
             penalty_coefficient=10.0, seed=None)
     - community (Community), storage_node_ids (action order), obs_layout (name → slice),
-      normalizer (MinMaxNormalizer, `.save(path)`; pass the path as `normalizer` to reuse it)
+      normalizer (MinMaxNormalizer, `.save(path)`; pass the path as `normalizer` to reuse it),
+      scenario_path, current_step (step of the next action), run_config() (JSON-serialisable)
     - action_space Box(-1, 1, (N,), float32); observation_space flat Box (ObservationBuilder)
     - reset(seed, options) → (obs, info): batteries to S^ini, first step 0 or random (np_random),
       seeds the action space
@@ -327,6 +337,7 @@ SmartCerEnv(scenario, start=None, end=None, episode_length=None, random_start=Fa
 ```
 
 - `info` of a step: `t`, `timestamp`, `privileged` (`{}` until phase 7, also in the reset info),
+  `obs_clipped` (values of the returned observation clipped to [0, 1], also in the reset info),
   `reward` (`type`, `main`, `penalty` = weighted penalty, `total` = R_t, and `nodes` with
   `reward_per_node`), `welfare` (breakdown), `penalty` (K_t), `action` (after the [-1, 1] clip),
   `nodes` (node id → NodeStep fields).
@@ -341,23 +352,53 @@ SmartCerEnv(scenario, start=None, end=None, episode_length=None, random_start=Fa
   (sin, cos), `time/day_of_week` (one-hot); prices as `price/sell`, `price/buy` if all nodes share
   them, else `<node>/sell_price`, `<node>/buy_price` per battery node; per battery node
   `<node>/generation`, `<node>/load`, `<node>/soc` (scaled to [S^min, S^max]), `<node>/a_lower`,
-  `<node>/a_upper`. Preset `extended` adds `time/holiday` (Italian national holidays),
+  `<node>/a_upper`. Preset `extended` adds `time/holiday` (Italian national holidays only),
   `community/generation`, `community/load` (totals of the nodes without a battery) and, with
   `lookback` L, `<node>/generation_lookback`, `<node>/load_lookback` (L values, most recent first);
   the `forecast` section is empty until phase 7. Static features are precomputed for every step;
   only SoC and bounds are computed in `step()`. Bounds of constant features are widened by 1 so
   that low < high.
 - Generation and load are min-max scaled with a `MinMaxNormalizer` fitted by `fit_normalizer` on
-  the training window `normalizer_window` only, then clipped to [0, 1]; JSON via `save`/`load`
+  the training window `normalizer_window` only, then clipped to [0, 1]
+  (`ObservationBuilder.clipped` counts the clipped values per step); JSON via `save`/`load`
   (bounds, window, scenario name).
 - `observe_current_step=False`: g and l of step t - 1 (0 at the first row of the data) and A^upper
   without the charge cap; the clipping still uses the full bounds.
 
 **Action convention:** one action per battery in [-1, 1]; positive charges, negative discharges.
 
+### Controllers, tracking and metrics, `smartcer/gym/controllers/`, `tracking/`, `metrics/`
+
+```
+Controller(env)                     bound to the unwrapped SmartCerEnv; reads env.community
+    - reset(); act(observation, info) → actions for env.current_step, in [-1, 1]
+├── NaiveController ('naive')       zero actions
+└── RBCController ('rbc')           FORMULATION section 13 ([M24] Algorithm 1)
+run_episode(env, controller, seed) → ResultsTracker
+compute_baselines(env, output_dir, controllers=('naive', 'rbc'), seed=None) → {name: KPIs}
+    writes <output_dir>/<name>/ (community.csv, nodes/<id>.csv, kpis.json, run_config.json) and
+    <output_dir>/kpis.json; refuses the scenario folder and any cer_data folder (S18)
+TrackResults(env) wrapper → env.get_wrapper_attr('tracker'): ResultsTracker
+    - community_table(), node_tables(), kpis(), save(output_dir, run_config) of the last
+      completed episode (only the current and the last completed episode are kept)
+ResultsCallback(output_dir, save_freq=1, run_config=None)   SB3, DummyVecEnv of TrackResults:
+    logs KPIs under 'smartcer/<kpi>' at every completed episode, saves every save_freq episodes
+compute_kpis(community_table, node_tables, capacities) → dict      (formulas: metrics/KPI.md)
+fit_score(reference, candidate) → F (%), daily_welfare(community_table) → W per day
+```
+
+- The RBC computes energies: d = g - l; charge min(d, S^max - s) or discharge min(-d, s - S^min),
+  divided by P Δt and limited to [-1, 1]; the environment clips it to the dynamic bounds with the
+  usual penalty. It reads g and l of step t from the scenario, as in [M24]. A producer never
+  discharges.
+- KPIs: welfare and its components, shared, exported and imported energy, sharing rate
+  (shared / exported), coverage rate (shared / imported), battery charge, discharge, cell
+  throughput and equivalent full cycles (throughput / 2 S^max), penalty mean, max and steps
+  (> 1e-9). Rates are fractions.
+
 **Known defects** S1-S18 of 0.6.2 are listed in `docs/refactor/REFACTOR_v1.md` section 2; their
-regression tests on the new API are named `test_s<n>_*`. Only S6 (0.6.2 rule-based controller) is
-still an `xfail(strict=True)` test, in `test/unit/v062/test_known_defects.py`, until phase 5.
+regression tests on the new API are named `test_s<n>_*`. All 0.6.2 modules and their
+`xfail(strict=True)` tests are removed; S6 is `test_s6_rbc_executes_intended_energy`.
 
 ## Testing
 
@@ -376,15 +417,13 @@ still an `xfail(strict=True)` test, in `test/unit/v062/test_known_defects.py`, u
   on optional dependencies use `pytest.importorskip`
 - Known defects: `@pytest.mark.xfail(strict=True, raises=<expected exception>, reason='S<n>: ...')`;
   an unexpected pass fails the suite. When a defect is fixed in a new module, add a regression
-  test on the new API named `test_s<n>_...`; the 0.6.2 xfail test stays until its module is
-  removed in phase 3
+  test on the new API named `test_s<n>_...`; the xfail test goes with the module it tests
 
 ## Code Style Conventions
 
 ### MANDATORY CODING STANDARDS
 
-**CRITICAL**: All code written in this repository MUST follow these standards (the 0.6.2 modules
-predate them and are not reformatted):
+**CRITICAL**: All code written in this repository MUST follow these standards:
 
 - **Language**: English for code, comments, docstrings and docs
 - **Type hints**: mandatory for all functions, methods and class attributes

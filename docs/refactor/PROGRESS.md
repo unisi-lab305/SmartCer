@@ -587,3 +587,200 @@ phase, in the format of section 9 of the brief, newest last.
      more argument.
 - Ready for phase 5: yes; the open questions do not block it. The phase 4 pull request is open and
   waits for your go-ahead to merge.
+
+- Pull request #6 merged by Leonardo after review (merge commit `ff00575`).
+- Answers (2026-10-19), all implemented in phase 5 (see below):
+  1. Leather split: fix now, as the first separate commit of phase 5. Select the period on the
+     first node's timestamps and cut every node at the same rows; raise a clear error if the node
+     lengths still differ, never realign silently; add a regression test with a split inside the
+     summer-time block.
+  2. FORMULATION section 11 wording confirmed. Add one sentence: with N batteries the per-node
+     penalty is about N times the collective one, so the two variants (and their training curves)
+     are not numerically comparable.
+  3. Keep clipping scaled values to [0, 1]. Add `info['obs_clipped']`, the number of observation
+     values clipped at that step, and document it in CONFIG.md section 6.
+  4. National holidays only; document the limit in CONFIG.md.
+
+## Phase 5 · Controllers, tracking and metrics – 2026-10-19
+
+- Branch and commits: `refactor/v1-phase-5-controllers-metrics`, created from `main` at `ff00575`
+  (phase 4 merged), pushed to `origin`; pull request opened, not merged.
+  - `3e067cd` fix(data): select the 0.6.2 period on the first node and cut every node at the same
+    rows (answer 1)
+  - `a43be7d` feat(gym): count clipped observation values in info and state the per-node penalty
+    scale (answers 2-4)
+  - `b3974ee` feat(gym): add baseline controllers, results tracking and KPIs
+  - `f609046` refactor!: remove the 0.6.2 metrics and storage controllers
+  - docs(refactor): add phase 5 progress report (this section)
+- Done:
+  1. Phase 4 answers:
+     - Loader, 0.6.2 format (`smartcer/data/loader.py`): the period is selected on the first
+       node's timestamps and every node is cut at the same row positions. Every file must have the
+       same number of rows; otherwise `ValueError` naming the node, its rows and the first node's.
+       The whole-year rows of each node are unchanged; `docs/CONFIG.md` section 4.
+     - FORMULATION section 11: with N = |U_b| batteries the per-node penalty is N σ K_t, N times
+       the collective one, and the main terms differ too, so collective and per-node rewards,
+       including their training curves, are not numerically comparable.
+     - `info['obs_clipped']` (reset and step info): the number of values of the returned
+       observation that lie outside the normaliser's training range and were clipped to [0, 1].
+       It is precomputed per step (`ObservationBuilder.clipped`,
+       `MinMaxNormalizer.outside_range`). The zeros before the first row of the data are padding
+       and are not counted.
+     - Holiday flag: national holidays only, documented in CONFIG.md section 6 and in the schema
+       docstring.
+  2. `smartcer/gym/controllers/` (ported from storage-node-environment and adapted to continuous
+     actions):
+     - `Controller` (`base.py`) is bound to the unwrapped `SmartCerEnv`; `act(observation, info)`
+       returns the actions for `env.current_step`.
+     - `NaiveController` (`naive.py`) returns zero actions.
+     - `RBCController` (`rbc.py`) follows FORMULATION section 13: d = g − l, then charge
+       min(d, S^max − s) or discharge min(−d, s − S^min), divided by P Δt and limited to [−1, 1].
+       The environment then clips the action to the dynamic bounds, with the usual penalty.
+     - `baselines.py`:
+       - `CONTROLLERS`, a read-only registry;
+       - `run_episode(env, controller, seed)`, which returns a tracker;
+       - `compute_baselines(env, output_dir, controllers=('naive', 'rbc'), seed)`. For each
+         controller it writes `<output_dir>/<name>/` with `community.csv`, `nodes/<node>.csv`,
+         `kpis.json` and `run_config.json`, plus a summary `<output_dir>/kpis.json`. It refuses
+         the scenario folder and any `cer_data` folder (S18).
+  3. `smartcer/gym/tracking/`:
+     - `ResultsTracker` builds the community table (reward, welfare and its components, K_t,
+       `obs_clipped`) and one table per node (`NodeStep` fields, plus the node reward with
+       `reward_per_node`). It provides the KPIs and `save(output_dir, run_config)` (CSV and JSON),
+       and keeps only the current and the last completed episode.
+     - The `TrackResults` wrapper feeds the tracker (`env.get_wrapper_attr('tracker')`).
+     - The Stable-Baselines3 `ResultsCallback(output_dir, save_freq, run_config)` logs the KPIs of
+       each completed episode under `smartcer/` and saves every `save_freq` episodes. Its
+       Stable-Baselines3 import is guarded.
+  4. `smartcer/gym/metrics/`:
+     - `compute_kpis`: welfare, revenue, cost, storage cost, incentive and reward; shared, exported
+       and imported energy; sharing rate (shared / exported) and coverage rate (shared /
+       imported); battery charge, discharge, cell throughput and equivalent full cycles
+       (throughput / 2 S^max); penalty mean, maximum and penalised steps (k > 1e-9). Totals cover
+       the community, with a block per battery.
+     - `fit_score` ([M24] eq. 11) and `daily_welfare`.
+     - `KPI.md` rewritten with formulas and units; it replaces the 0.6.2 KPIs (S12).
+  5. Environment additions: `run_config()` (JSON for the output files), `current_step`,
+     `scenario_path`.
+  6. Removed `smartcer/cer_metrics/`, `smartcer/storage_controllers/` and the S6 xfail test
+     (`test/unit/v062/`). The regression tests on the new API are
+     `test_s6_rbc_executes_intended_energy`, `test_s12_rates_are_named_after_what_they_measure`
+     and `test_s18_baselines_refuse_scenario_folders`. No 0.6.2 module and no xfail test is left.
+     The CI wheel check now imports `smartcer.gym.controllers`, `smartcer.gym.metrics` and
+     `smartcer.gym.tracking`.
+  7. Leather 2022 baselines regenerated locally in `results/baselines/leather_2022/` (`results/`
+     added to `.gitignore`, not committed).
+  8. `docs/CONFIG.md` (section 4; section 6: `obs_clipped`, holidays, output directory and files),
+     `CLAUDE.md`, `CHANGELOG.md`.
+- Acceptance checks:
+  - The RBC executes the intended energy in hand cases (`test/unit/gym/test_controllers.py`):
+    - S6 case: surplus 40 kWh, 30 kW, 100 kWh, empty battery → action 1.0, 30 kWh charged,
+      k = 0 (0.6.2: 0.3, 9 kWh);
+    - prosumer 10 kWh / 5 kW / η = 0.9:
+      - surplus 3 → action 0.6, 3 kWh charged, SoC 2.7;
+      - deficit 2 → action −0.4, 2 kWh to the node, no import;
+      - battery at 9 kWh with surplus 3 → action 0.2, 1 kWh;
+      - Δt = 0.25 h with surplus 1 kWh → action 0.8, 1 kWh;
+    - a producer stays idle at night; a consumer discharges 1 kWh at action −0.2;
+    - near S^min the rule asks 0.478 kWh while the cell can deliver 0.430: the environment clips
+      it to −A^lower with k = 0.0096.
+
+    All passed.
+  - Fit Score: 100 on identical series; hand example (1, 2, 3) vs (1, 2, 4) → 50; mean
+    candidate → 0; reversed series → −300; errors for different lengths, empty, non-finite or
+    constant reference → passed.
+  - KPIs of the synthetic scenario match hand calculations (`test_baselines.py`):
+    - naive, 48 h: exported 320 kWh, imported 456 kWh, shared 48 kWh, sharing rate 0.15,
+      coverage rate 0.105;
+    - naive economics: revenue 40 €, cost 111.2 €, TIP incentive 4.5 €, welfare −66.7 €;
+    - RBC: pv_bat charges 20 kWh (18 kWh in the cell) until full, never discharges, 0.45 cycles,
+      no penalty.
+
+    KPIs on hand tables (sums, rates, cycles 0.5 and 0.1, penalty mean, maximum and steps) →
+    passed.
+  - Tracker:
+    - its tables equal the step info;
+    - per-node rewards are recorded;
+    - an unfinished episode is dropped;
+    - CSV files read back equal;
+    - KPI and run configuration JSON are written.
+
+    All passed. `ResultsCallback` with SAC, 3 episodes of 8 steps and `save_freq=2` → saves
+    `episode_00002` and logs `smartcer/welfare` → passed.
+  - Loader regression:
+    - a 0.6.2 period starting inside a shifted block cuts both nodes at the same rows;
+    - files with different row counts raise;
+    - Leather split on 2022-06-01: 3,624 + 5,136 = 8,760 steps, with timestamps and every node's
+      data equal to the whole-year load.
+
+    All passed. The three tests fail on the previous loader.
+  - `obs_clipped`: the training-window test counts 0 over the training day, 4 clipped loads at
+    06:00 and 8 values at noon of the ×100 day (`test_observation_window.py`); 0 with a normaliser
+    fitted on the whole period → passed.
+  - `make test` → 237 passed in 97 s (29 new tests; S6 is no longer an xfail).
+    `make test-coverage` → 95 % overall (93 % in phase 4); `controllers/` 94-100 %, `metrics/` 100 %,
+    `tracking/` 93-95 %.
+  - Wheel built and installed in the clean virtual environment: `smartcer.gym.controllers`,
+    `metrics` and `tracking` import without Stable-Baselines3; `smartcer.storage_controllers` and
+    `smartcer.cer_metrics` are gone.
+  - CI run 39250885494 on `f609046` → green: unit 190 passed; integration 41 passed, 6 skipped
+    (local data); coverage 95 %; wheel import of the new subpackages OK.
+  - Leather 2022 baselines (local, 8,760 steps, both controllers in 9.7 s):
+
+    | KPI | naive | rbc |
+    |---|---|---|
+    | welfare (€) | −138,473.18 | −140,523.12 |
+    | revenue / cost (€) | 261,919.39 / 428,738.53 | 255,368.35 / 423,151.70 |
+    | incentive (€) | 28,345.97 | 27,260.24 |
+    | shared / exported / imported (kWh) | 582,963 / 834,147 / 1,508,025 | 569,131 / 811,840 / 1,486,695 |
+    | sharing / coverage rate | 0.699 / 0.387 | 0.701 / 0.383 |
+    | equivalent full cycles (total) | 0 | 75.2 |
+    | penalised steps, max k | 0 | 274, 0.0196 |
+
+    The RBC lowers the welfare by 2,050 € (1.5 %). Its batteries store surpluses that the
+    community would otherwise share and be paid for, and lose energy in the cell (−13,832 kWh
+    shared, −1,086 € of incentive). Its penalties come from discharges near S^min
+    (`conceria_dolmen` 195 steps, `toscana_fridge` 79). The producer battery `pv_storage` charges
+    91.8 kWh on 1-2 January and then stays full all year (0.45 cycles).
+- Deviations from the brief and why:
+  - Loader: in the 0.6.2 format every file must now have the same number of rows (before, only
+    the rows of the period had to match). Cutting files of different lengths at the same
+    positions could pair rows of different dates. Leather has 8,760 rows in every file.
+  - `obs_clipped` does not count the zeros before the first row of the data (lookback and causal
+    timing): they are padding, not data outside the training range.
+  - Controllers read the true state from `env.community` (not the scaled observation), and the
+    RBC uses g and l of step t whatever `observe_current_step` is, as in [M24] and section 13.
+  - The RBC does not clip to the dynamic bounds itself: section 13 says the environment clips it
+    "as any other action", so it can be penalised near S^min (see the open questions).
+  - `compute_baselines` takes a configured environment (period, episode, reward) and a required
+    output directory, rather than a run configuration file. It writes the 0.6.2 report structure
+    (community table, one table per node, KPI JSON, run configuration JSON).
+  - Tracking is a Gymnasium wrapper (`TrackResults`), not a flag inside the environment as in
+    storage-node-environment. The tracker keeps only the current and the last completed episode.
+    The callback saves every N completed episodes rather than every N steps, logs the KPIs to the
+    Stable-Baselines3 logger, and needs a `DummyVecEnv` (the tracker lives in the training
+    process).
+  - KPI rates are fractions, not percentages as in 0.6.2. Equivalent full cycles use the nominal
+    capacity S^max. The storage-node-environment visualisations are not ported (optional in the
+    brief).
+  - The Fit Score is implemented but not used by `compute_baselines`: its reference, the MILP
+    oracle, comes in phase 7.
+  - New public API on `SmartCerEnv`: `run_config()`, `current_step`, `scenario_path`.
+- Open questions for Leonardo:
+  1. RBC for producers: with section 13 a producer has d = g ≥ 0, so its battery fills up and
+     never discharges (Leather `pv_storage`: full after 91.8 kWh, idle for the rest of 2022).
+     0.6.2 discharged a producer's battery whenever its production was 0. Keep section 13 as
+     written, or add a producer rule (changes FORMULATION section 13)?
+  2. RBC near S^min: the rule discharges min(−d, s − S^min) on the node side, but the cell
+     delivers at most η^dis (s̃ − S^min), so the environment clips and penalises the action (274
+     steps on Leather, max k 0.0196, welfare effect negligible). Keep the literal rule, or let
+     the rule use the cell limits (η^dis (s̃ − S^min) and (S^max − s̃) / η^cha), so that it never
+     triggers the penalty?
+  3. Equivalent full cycles = throughput / (2 S^max), with the nominal capacity. Prefer the usable
+     capacity S^max − S^min?
+  4. On Leather the RBC baseline is 2,050 € per year below idle batteries, because individual
+     self-consumption competes with sharing. Is that the expected baseline for the class A
+     comparison, or should the RBC target the community balance instead of the node's own?
+     (Section 13 is [M24] Algorithm 1, per node.)
+- Ready for phase 6: yes; the open questions do not block it (phase 6 is performance). The phase 5
+  pull request is open and waits for your go-ahead to merge.

@@ -45,6 +45,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   window (`normalizer_window`, default the whole period), saved to and loaded from JSON
   (`env.normalizer.save(path)`, `normalizer=path`)
 - `info['privileged']` (empty) in the reset and step info, reserved for the critic's data
+- `info['obs_clipped']` in the reset and step info: the number of observation values clipped to
+  [0, 1] because they lie outside the normaliser's training range
+- Baseline controllers in `smartcer.gym.controllers`: `NaiveController` (idle batteries) and
+  `RBCController` ([M24] Algorithm 1, computed in energy); `compute_baselines` runs them and writes
+  the community table, one table per node, the KPIs and the run configuration to an output
+  directory
+- Results tracking in `smartcer.gym.tracking`: `TrackResults` wrapper with a `ResultsTracker`
+  (community and per-node tables, CSV export) and the Stable-Baselines3 `ResultsCallback`
+- KPIs in `smartcer.gym.metrics` (welfare and its components, shared energy, sharing and coverage
+  rates, imports, exports, battery throughput, equivalent full cycles, penalty statistics) and the
+  Fit Score, documented in `smartcer/gym/metrics/KPI.md`
+- `SmartCerEnv.run_config()`, `SmartCerEnv.current_step` and `SmartCerEnv.scenario_path`
 
 ### Changed
 
@@ -73,6 +85,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Environment `SmartCer-v0` and the 0.6.2 modules `smartcer.cer_env`, `smartcer.cer_utils`,
   `smartcer.cer_models`, `smartcer.cer_reward` (with the running reward scaler) and
   `smartcer.cer_preprocessing`
+- 0.6.2 modules `smartcer.cer_metrics` (replaced by `smartcer.gym.metrics`) and
+  `smartcer.storage_controllers` (replaced by `smartcer.gym.controllers`)
 
 ### Fixed
 
@@ -85,6 +99,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The current step's generation is observed only with `observe_current_step=True` (S7); identical
   episodes give identical rewards (S9); the terminal observation describes the last step (S10);
   `reset(seed)` also seeds the action space (S17)
+- The rule-based controller executes the intended energy: its action is the energy divided by the
+  battery power, not by the capacity (S6)
+- KPIs are named after what they measure: shared / exported is the sharing rate (0.6.2 called it
+  `self_consumption`); `net_metering` and `energy_balance` are gone (S12)
+- Run results are written to an output directory chosen by the caller, never into the scenario
+  folder (S18)
+- 0.6.2 scenarios whose files have shifted timestamps (Leather) can be split with `start` and
+  `end` anywhere: the period is selected on the first node's timestamps and every node is cut at
+  the same rows; files with different numbers of rows raise `ValueError`
 
 ---
 

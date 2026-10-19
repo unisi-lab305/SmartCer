@@ -140,6 +140,8 @@ def test_reward_is_welfare_minus_penalty_and_info(mini_cer_v1_path: Path) -> Non
     assert info['reward'] == {'type': 'welfare', 'main': pytest.approx(1.125),
                               'penalty': pytest.approx(2.5), 'total': pytest.approx(reward)}
     assert info['privileged'] == {}
+    # the normaliser is fitted on the whole period
+    assert info['obs_clipped'] == 0
     assert info['nodes']['pv_bat']['action_applied'] == 0.0
     assert info['nodes']['factory_bat']['soc_kwh'] == pytest.approx(4.0 + 0.9 * 5.0)
     assert info['timestamp'] == np.datetime64('2022-01-03T10:00')

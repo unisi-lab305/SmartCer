@@ -184,6 +184,68 @@ def test_legacy_irregular_timestamps_warn_and_align_by_position(tmp_path: Path) 
     assert community.timestamps[2] == np.datetime64('2022-01-03T02:00')
 
 
+def write_legacy(tmp_path: Path, a_lines: list[str], b_lines: list[str]) -> Path:
+    """
+    0.6.2 scenario with two prosumers 'a' and 'b'.
+
+    Args:
+        tmp_path: Pytest temporary directory.
+        a_lines: Data lines of a.csv.
+        b_lines: Data lines of b.csv.
+
+    Returns:
+        Path: Scenario folder.
+    """
+    pv = {'tip_base': 0.08, 'tip_threshold': 0.12, 'fi_zone': 0.01, 'pnrr': 0.0}
+    config = {'Prosumers': {'a': {'Type': 'x', 'Photovoltaic': pv},
+                            'b': {'Type': 'x', 'Photovoltaic': pv}}}
+    folder = tmp_path / 'legacy'
+    (folder / 'nodes' / 'prosumers').mkdir(parents=True)
+    (folder / 'config.json').write_text(json.dumps(config))
+    (folder / 'nodes' / 'prosumers' / 'a.csv').write_text(csv(a_lines))
+    (folder / 'nodes' / 'prosumers' / 'b.csv').write_text(csv(b_lines))
+    return folder
+
+
+def test_legacy_period_inside_shifted_block_is_cut_by_position(tmp_path: Path) -> None:
+    """
+    Test the 0.6.2 format with node 'b' shifted by one hour from its third row (as the summer-time
+    block of Leather): the period is selected on node 'a' and both nodes are cut at the same rows,
+    also when the boundary falls inside the shifted block.
+
+    Args:
+        tmp_path: Pytest temporary directory.
+    """
+    # b: hours 00, 01, then 03-06 instead of 02-05; production = 10 + row number
+    hours = [0, 1, 3, 4, 5, 6]
+    shifted = [f'2022-01-03 {h:02d}:00:00,{10 + row}.0,1,0.1,0.3' for row, h in enumerate(hours)]
+    folder = write_legacy(tmp_path, rows(6), shifted)
+
+    with pytest.warns(TimestampWarning, match=r"node 'b'.*differ from node 'a' at 3 rows"):
+        community = load_scenario(folder, start='2022-01-03 03:00')
+
+    assert community.n_steps == 3
+    assert community.timestamps[0] == np.datetime64('2022-01-03T03:00')
+    # rows 3-5 of both files, that is b's rows labelled 04-06
+    assert community.node('b').generation_kwh.tolist() == [13.0, 14.0, 15.0]
+    with pytest.warns(TimestampWarning):
+        assert load_scenario(folder, end='2022-01-03 02:00').n_steps == 3
+
+
+def test_legacy_files_with_different_row_counts_raise(tmp_path: Path) -> None:
+    """
+    Test the 0.6.2 format: files with different numbers of rows cannot be aligned by position.
+
+    Args:
+        tmp_path: Pytest temporary directory.
+    """
+    folder = write_legacy(tmp_path, rows(6), rows(5))
+
+    with pytest.raises(ValueError, match=r"node 'b'.*5 rows, node 'a' has 6; the 0.6.2 format "
+                                         r"aligns the nodes by row position"):
+        load_scenario(folder, start='2022-01-03 01:00', end='2022-01-03 02:00')
+
+
 def test_incentive_csv_column(write_scenario: Callable[..., Path]) -> None:
     """
     Test a per-step unit value from a CSV column, and the error for mismatched timestamps.

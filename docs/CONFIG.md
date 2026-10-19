@@ -149,12 +149,14 @@ A `config.json` without `format_version` and with the groups `Producers`, `Consu
 | (implicit) | `delta_t: 1.0`, `units: "kWh"`, `incentive: {"model": "tip"}` |
 
 **Timestamps.** As in 0.6.2, the rows of the nodes are aligned by position and the community uses
-the timestamps of the first node. Unsorted, duplicated or wrongly spaced timestamps, and nodes
-whose timestamps differ from the first node's, are reported in one `TimestampWarning`
-(`smartcer.data.TimestampWarning`) instead of raising; the nodes must still have the same number of
-rows in the period. The local Leather scenario needs this: three of its files have timestamps
-shifted by one hour between 27/03 and 31/10/2022. Converting a scenario to format 1.0 requires
-regular timestamps.
+the timestamps of the first node. Every file must have the same number of rows (`ValueError`
+otherwise); the period `start`–`end` is selected on the first node's timestamps and every node is
+cut at the same rows. Unsorted, duplicated or wrongly spaced timestamps, and nodes whose
+timestamps differ from the first node's, are reported in one `TimestampWarning`
+(`smartcer.data.TimestampWarning`) instead of raising. The local Leather scenario needs this:
+three of its files have timestamps shifted by one hour between 27/03 and 31/10/2022, and a period
+may start or end inside that block. Converting a scenario to format 1.0 requires regular
+timestamps.
 
 ## 5. Units inside SmartCer
 
@@ -194,7 +196,7 @@ in order:
 | Section | Features | Presets |
 |---|---|---|
 | time | `time/month`, `time/hour` (sin, cos), `time/day_of_week` (one-hot, Monday first) | both |
-| time | `time/holiday`: 1 on Italian national holidays (`holidays` package), else 0 | `extended` |
+| time | `time/holiday`: 1 on Italian national holidays (`holidays` package), else 0; regional and local holidays (e.g. the patron saint of a municipality) are not included | `extended` |
 | price | `price/sell`, `price/buy`, €/kWh, not normalised, when all nodes share the same series; otherwise per battery node (below) | both |
 | community | `community/generation`, `community/load`: totals of the nodes without a battery | `extended` |
 | nodes | per battery node, in action order: [`<node>/sell_price`, `<node>/buy_price`], `<node>/generation`, `<node>/load`, [`<node>/generation_lookback`, `<node>/load_lookback`: `lookback` values, most recent first], `<node>/soc` (scaled to [S^min, S^max]), `<node>/a_lower`, `<node>/a_upper` | both (lookback: `extended`) |
@@ -202,7 +204,8 @@ in order:
 
 Generation and load (also the community totals and the lookback) are min-max scaled with the
 bounds of the training window `normalizer_window` and clipped to [0, 1], so that values beyond the
-training range (e.g. in a test period) stay inside the space. With `observe_current_step=False`
+training range (e.g. in a test period) stay inside the space; `info['obs_clipped']` counts them.
+With `observe_current_step=False`
 they are those of step t - 1; values before the first row of the data are 0. Save the normaliser of
 a training environment and pass it to the evaluation one:
 
@@ -214,13 +217,17 @@ test = SmartCerEnv('path/to/scenario', start='2022-10-01 00:00', normalizer='nor
 
 ### Info
 
-`info` of `reset()`: `t`, `timestamp`, `privileged`, `episode_start`, `episode_end`. `info` of
-`step()`: `t`, `timestamp`, `privileged`, `reward` (`type`, `main`, `penalty` = weighted penalty,
+`info` of `reset()`: `t`, `timestamp`, `privileged`, `episode_start`, `episode_end`,
+`obs_clipped`. `info` of `step()`: `t`, `timestamp`, `privileged`, `obs_clipped`, `reward` (`type`,
+`main`, `penalty` = weighted penalty,
 `total` = R_t and, with `reward_per_node`, `nodes`: node → `main`, `penalty`, `total`), `welfare`
 (revenue, cost, storage cost, incentive, shared, exported and imported energy, total), `penalty`
 (K_t), `action` (after the [-1, 1] clip) and `nodes` (per-node flows, economics, state of charge,
 requested and applied action, bounds). `privileged` holds data for the critic only and stays empty
-until the oracle and forecast providers.
+until the oracle and forecast providers. `obs_clipped` is the number of values of the returned
+observation that were clipped to [0, 1] because they lie outside the normaliser's training range
+(the zeros before the first row of the data are not counted); it is 0 when the normaliser is fitted
+on the whole period.
 
 ### 0.6.2 run keys
 
@@ -240,4 +247,31 @@ until the oracle and forecast providers.
 With `single_agent: true` the per-node rewards are in `info['reward']['nodes']` and the scalar
 reward is their sum (0.6.2 returned a list). Other reward types raise `ValueError`.
 
-Forecast and oracle providers and the output directory are added in later phases.
+### Output directory
+
+Runs are written to an output directory chosen by the caller (e.g. `results/`, gitignored), never
+into the scenario folder or a `cer_data` folder (`ValueError`; 0.6.2 wrote into
+`cer_data/<scenario>/simulations/`):
+
+```python
+from smartcer.gym import SmartCerEnv
+from smartcer.gym.controllers import compute_baselines
+
+env = SmartCerEnv('path/to/scenario', start='2022-01-01', end='2022-12-31 23:00')
+kpis = compute_baselines(env, 'results/baselines/my_run', seed=0)   # controllers 'naive', 'rbc'
+```
+
+| File | Content |
+|---|---|
+| `<controller>/community.csv` | one row per step: `datetime`, `episode`, `t`, `reward`, `reward_main`, `reward_penalty`, `welfare`, `revenue`, `cost`, `storage_cost`, `incentive`, `shared_energy_kwh`, `export_kwh`, `import_kwh`, `penalty` (K_t), `obs_clipped` |
+| `<controller>/nodes/<node>.csv` | one row per step: `datetime`, `episode`, `t` and the node's flows, economics, state of charge, requested and applied action, bounds, k (and the node reward with `reward_per_node`) |
+| `<controller>/kpis.json` | KPIs of the episode (`smartcer/gym/metrics/KPI.md`) |
+| `<controller>/run_config.json` | `env.run_config()`: version, scenario, period, episode, observation and reward settings, controller |
+| `kpis.json` | KPIs of every controller |
+
+The same tables come from any run through the `TrackResults` wrapper
+(`env.get_wrapper_attr('tracker').save(folder, env.unwrapped.run_config())`) and, during
+Stable-Baselines3 training, from `ResultsCallback(output_dir, save_freq)`, which also logs the KPIs
+of each episode under `smartcer/`.
+
+Forecast and oracle providers are added in phase 7.

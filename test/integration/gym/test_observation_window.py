@@ -59,7 +59,8 @@ def test_normalizer_fitted_on_training_window_ignores_the_test_window(
     """
     Test that two scenarios equal in the training window (first day) and different afterwards
     (generation and load × 100 on day 2) give the same normaliser and the same training-window
-    observations, while the test-window values are clipped into the space.
+    observations, while the test-window values are clipped into the space and counted in
+    `info['obs_clipped']`.
 
     Args:
         write_scenario: Scenario factory.
@@ -76,17 +77,23 @@ def test_normalizer_fitted_on_training_window_ignores_the_test_window(
     assert plain.normalizer.window == ('2022-01-01T00:00:00', '2022-01-01T23:00:00')
     expected = plain.community.node('pros_bat').generation_kwh[:24]
     assert plain.normalizer.bounds['pros_bat/generation'] == (expected.min(), expected.max())
-    observations = []
+    observations, clipped = [], []
     for env in envs:
-        obs, _ = env.reset(seed=0)
-        trajectory = [obs]
+        obs, info = env.reset(seed=0)
+        trajectory, counts = [obs], [info['obs_clipped']]
         for _ in range(47):
-            obs, *_ = env.step(np.zeros(1, dtype=np.float32))
+            obs, *_, info = env.step(np.zeros(1, dtype=np.float32))
             trajectory.append(obs)
+            counts.append(info['obs_clipped'])
         observations.append(np.array(trajectory))
+        clipped.append(counts)
     assert np.array_equal(observations[0][:24], observations[1][:24])
     assert all(spiked.observation_space.contains(obs) for obs in observations[1])
     assert observations[1][30, spiked.obs_layout['pros_bat/load']] == pytest.approx([1.0])
+    # 8 scaled values per step (community g and l, g and l of pros_bat, 2 + 2 lookback); on day
+    # 2 the loads are clipped, and at noon also the generations (night generation stays 0)
+    assert clipped[0][:24] == clipped[1][:24] == [0] * 24
+    assert clipped[1][30] == 4 and clipped[1][36] == 8
 
 
 def test_saved_normalizer_is_reused_by_an_evaluation_environment(
