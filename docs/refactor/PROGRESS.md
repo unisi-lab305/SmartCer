@@ -347,7 +347,7 @@ phase, in the format of section 9 of the brief, newest last.
   - `39efa84` feat(gym): add the SmartCer-v1 Gymnasium environment with the meco observation
   - `5c3aa69` test(gym): add compliance, episode, timing, action and SAC tests of SmartCer-v1
   - `44aaf48` refactor!: remove the 0.6.2 environment, SmartCer-v0 and the 0.6.2 models
-  - docs(refactor): add phase 3 progress report (this section)
+  - `7decf34` docs(refactor): add phase 3 progress report (this section)
 - Done:
   1. `smartcer/gym/cer_env.py`, `SmartCerEnv`: `reset(seed=None, options=None) -> (obs, info)`,
      `step(action) -> (obs, reward, terminated, truncated, info)` with a float reward
@@ -442,4 +442,148 @@ phase, in the format of section 9 of the brief, newest last.
   3. `README.md` now describes the removed 0.6.2 API (`SmartCer-v0`, `smartcer.cer_env`); it is
      rewritten in phase 8 as agreed — tell me if it should get a short notice earlier.
 - Ready for phase 4: yes, after the review and merge of the phase 3 pull request.
+- Pull request #5 reviewed and merged by Leonardo (merge commit `cef6f9f`).
+- Answers (2026-10-19): 1) both prices stay in every battery node's block. 2) in phase 4 the 0.6.2
+  `energy` type maps to the energy reward and `single_agent: true` to per-node rewards in `info`,
+  with the scalar reward equal to their sum and a DeprecationWarning (done, see phase 4). 3) a short
+  notice in `README.md` now (done in phase 4); the full rewrite stays in phase 8.
 
+## Phase 4 · Rewards, observation and critic channel – 2026-10-19
+
+- Branch and commits: `refactor/v1-phase-4-rewards-observation`, created from `main` at `cef6f9f`
+  (phase 3 merged), pushed to `origin`; pull request opened, not merged.
+  - `5fc81b4` feat(gym): add reward types, the extended observation preset and a training-window
+    normaliser
+  - `5b1cc35` test(gym): add reward, normaliser, observation feature and one-year observation tests
+  - `f3e822c` docs: add a 1.0 development notice to the README
+  - docs(refactor): add phase 4 progress report (this section, also completing the phase 3 commit
+    list)
+- Done:
+  1. `smartcer/gym/rewards/`, ported from storage-node-environment and adapted:
+     - `base.py`: template method `RewardCalculator.compute(step) → RewardBreakdown(main, penalty,
+       total, nodes)`, main term minus σ times the constraint penalty. Collective variant
+       R_t = M_t − σK_t; per-node variant r_u = m_u − σk_u for every battery node, with
+       R_t = Σ_u r_u. No `normalize` flag and no scaler.
+     - `calculators.py`: `welfare` (M = W_t, default, collective only); `profit` (m_u = revenue −
+       cost − storage cost; the collective variant adds I_t and equals `welfare`); `energy`
+       (0.6.2 legacy, m_u = −(i^gri_u)², collective sum over all nodes).
+     - `config.py`: `RewardConfig` and a read-only `REWARD_REGISTRY` (`MappingProxyType`); the
+       factory `make_reward` reads the registry, with no if/elif chain.
+     - Environment arguments `reward` and `reward_per_node`. `info['reward']` holds `type`, `main`,
+       `penalty` (weighted), `total` and, per node, `nodes` (node → main, penalty, total).
+  2. `docs/FORMULATION.md` section 11 states the two variants (collective with M_t summed over all
+     nodes, per node over U_b with R_t = Σ r_u), as answered on 2026-10-19 (see open question 2).
+  3. `from_v062_config` (answer 2 of phase 3): `profit`/`cost` with `single_agent: true` →
+     `reward='profit', reward_per_node=True`; `energy` → `reward='energy'`, per node if
+     `single_agent` is true. The DeprecationWarning says that the scalar reward is the sum of the
+     per-node rewards in `info`.
+  4. `smartcer/gym/observation/`: each environment builds its own schema from its arguments
+     (preset, timing, `lookback`, normaliser), in sections `time`, `price`, `community`, `nodes`,
+     `forecast` (`ObservationBuilder.sections`).
+     - Preset `extended`: the time features of `meco`, plus `time/holiday` (Italian national
+       holidays from the `holidays` package); the prices as in `meco`; `community/generation` and
+       `community/load` (totals of the nodes without a battery); per battery node g, l, optional
+       `lookback` L (`<node>/generation_lookback`, `<node>/load_lookback`, most recent first),
+       SoC, A^lower, A^upper; an empty `forecast` section.
+     - `normalizers.py`: `MinMaxNormalizer`, fitted by `fit_normalizer(community, window)` on the
+       steps of the training window only. It scales and clips to [0, 1], and is saved to and
+       loaded from JSON (format, type, scenario, window, bounds).
+     - Environment arguments `normalizer_window` (default: the run period) and `normalizer` (a
+       `MinMaxNormalizer` or a JSON path), plus the attribute `env.normalizer`. The `meco` preset
+       uses the same normaliser, which closes the scaling deviation of phase 3.
+  5. `info['privileged'] = {}` in the reset and step info.
+  6. `README.md`: notice that 1.0 is under development and the 0.6.2 API removed, with the `v0.6.2`
+     tag for the old version (answer 3 of phase 3).
+  7. `docs/CONFIG.md` section 6 (new arguments, observation sections, normaliser workflow, info
+     keys, 0.6.2 reward mapping), `CLAUDE.md` and `CHANGELOG.md`.
+- Acceptance checks:
+  - One unit test per feature (`test/unit/gym/test_observation.py`):
+    - layout and sections of `extended`: contiguous, sections in vector order, empty `forecast`;
+    - month, hour and day of week;
+    - holiday flag: 6 January across midnight → 0, 0, 1, 1, and 2 June;
+    - prices per node: 0.10 sell, 0 buy for a producer, 0.30 buy;
+    - community aggregates: generation 0 → 0 and 5 → 1; constant load 8 kWh → 0;
+    - per-node g and l;
+    - lookback: [1, 1, 0] at t = 10, [1, 0, 0] with `observe_current_step=False`, zeros before
+      the first row;
+    - SoC 0.125, A^lower 0.405 and A^upper 1 after a 5 kWh charge;
+    - reserved prefix `community`, and a normaliser without the community's series.
+
+    All passed. Normaliser (`test_normalizers.py`): fit, transform with clipping, constant series,
+    JSON round trip, validation → passed.
+  - Every observation of a year lies in the observation space
+    (`test/integration/gym/test_observation_window.py`):
+    - synthetic year, 8,760 steps, random actions, normaliser fitted on January–March (summer
+      generation above the training maximum): `meco` with timing True, and `extended` with
+      lookback 4 and timing False → 0 observations outside the space;
+    - Leather 2022 (local): `extended`, lookback 3, timing False, normaliser on January–June → 0
+      outside the space.
+
+    All passed.
+  - Normaliser fitted on a training window ignores the test window: two 48 h scenarios, identical
+    on day 1 and with generation and load × 100 on day 2, normaliser fitted on day 1.
+    - identical bounds, equal to the day-1 minimum and maximum;
+    - identical observations over the training window;
+    - day-2 observations inside the space (clipped to 1).
+
+    Passed. A saved normaliser reloaded by an evaluation environment on day 2 keeps the training
+    bounds and window → passed.
+  - Rewards:
+    - hand values at 10:00 of day 1 (`test_rewards.py`):
+      - `welfare` R = −1.375;
+      - per-node `profit`: pv_bat 1.0 − 5.0 = −4.0, factory_bat 0.5 − 0 = 0.5, sum −3.5;
+      - collective `energy` −5 − 2.5 = −7.5; per-node `energy` −5, 0;
+      - the storage cost is subtracted from the profit;
+      - the template works with a minimal subclass;
+      - the registry is read-only;
+    - over full episodes (`test_env_rewards.py`): R = W − σK at every step; collective `profit` =
+      `welfare`; per-node totals sum to the reward and match each node's info.
+
+    All passed. `check_env` (Gymnasium) also passes with `extended`, lookback 3 and per-node
+    `profit`.
+  - `make test` → 208 passed, 1 xfailed (S6) in 200 s (40 new tests). `make test-coverage` → 93 %
+    overall, `smartcer/gym/` 96–100 % (`rewards/` 98–100 %, `normalizers.py` 98 %,
+    `schema.py` 99 %).
+  - CI run 39240436895 on `f3e822c` → green: unit 167 passed, 1 xfailed; integration 36 passed, 5
+    skipped (local data); coverage 93 %; wheel import OK.
+  - Informative: Leather `extended` with lookback 6 has 90 features (`meco`: 39); a normaliser
+    saved from a January–20 March environment is reused by a 21 March–December one. One Leather
+    year took 10.6–11.9 s on this branch against 10.4 s for `main` measured at the same time (the
+    machine was slower than in phase 3, 5.1 s), so no regression.
+- Deviations from the brief and why:
+  - `profit` and `energy` have a collective and a per-node variant, selected with `reward_per_node`
+    (the 0.6.2 `single_agent`). The brief lists `profit` as "per node"; FORMULATION section 11
+    also defines its collective variant (with the incentive), which equals `welfare`. `welfare` has
+    no per-node variant: its incentive is collective.
+  - One penalty term (σK, or σk_u per node) instead of the weighted violation and storage-usage
+    penalties of storage-node-environment: the storage cost is already in the welfare (section 10).
+  - The keys of `info['reward']` changed from `welfare`, `penalty`, `total` (phase 3) to `type`,
+    `main`, `penalty`, `total`, because the main term is no longer always the welfare.
+  - Scaled values are clipped to [0, 1]: values beyond the training range (e.g. a sunnier test
+    period) saturate instead of leaving the space.
+  - Prices stay unnormalised in `extended`, as in `meco`. Their space bounds come from the
+    environment's own period; they only define the `Box`, they are not a scaling.
+  - Lookback only for g and l of the battery nodes and only in `extended` (`lookback > 0` with
+    `meco` raises); `meco` stays [M24] Tab. II.
+  - The holiday flag uses the national calendar of `holidays.country_holidays('IT')`: 13 days in
+    2022, one of which, the first Sunday of November (Giornata dell'unità nazionale), is a Sunday.
+    No regional or patron-saint days.
+  - The community aggregates are added only when the nodes without a battery have that quantity,
+    and `community` is a reserved prefix for node ids.
+- Open questions for Leonardo:
+  1. Leather cannot be split with `start`/`end` inside its shifted block (2022-03-27 23:00 →
+     2022-10-30 23:00). The lenient 0.6.2 loader aligns rows by position but selects the period
+     on each node's own labels, so a boundary inside the block gives 6,551 rows against 6,552 and a
+     `ValueError`. `normalizer_window` is not affected, and splits outside the block work. Shall I
+     select the period on the first node's timestamps and slice every node by the same positions
+     (a small loader fix, consistent with the lenient reading)? In this phase or in phase 5?
+  2. FORMULATION section 11 now defines the two variants. Per node, the penalty is σk_u (as in
+     0.6.2) and R_t = Σ r_u, so the total penalty is σ|U_b|K_t rather than σK_t. Confirm the
+     wording, or prefer the collective penalty σK_t split over the nodes?
+  3. Clipping scaled g and l to [0, 1] outside the training range (current), or leave them
+     unclipped with an unbounded space?
+  4. For the Molise scenario, should the holiday flag also include a regional or local holiday
+     (e.g. the patron saint of the municipality)? `holidays` supports subdivisions; it would be one
+     more argument.
+- Ready for phase 5: yes; the open questions do not block it. The phase 4 pull request is open and
+  waits for your go-ahead to merge.
