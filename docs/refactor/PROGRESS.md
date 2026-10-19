@@ -128,7 +128,11 @@ phase, in the format of section 9 of the brief, newest last.
   pull request.
   - `8302ddc` feat(core): add battery model with dynamic action bounds and legacy config mapping
   - `33e7a9a` test(core): add battery unit, configuration, invariant and layer-rule tests
-  - docs(refactor): add phase 1 progress report (this section)
+  - `45a43a5` docs(refactor): add phase 1 progress report (this section)
+  - after the merge of phase 0 (pull request #2, merge commit `251db89`) the branch was rebased on
+    `main`: the three commits above became `f4d20c2`, `fb924e2`, `2b43d58`, followed by
+    `52e18cd` fix(core): define battery self-discharge per hour (answer 2 below) and the commit
+    that updates this report
 - Done:
   1. `smartcer/core/storage/base.py`: abstract `StorageSystem` with `get_bounds`, `step`, `reset`.
   2. `smartcer/core/storage/battery.py`: `Battery` as in `docs/FORMULATION.md` sections 4-7 and the
@@ -210,3 +214,11 @@ phase, in the format of section 9 of the brief, newest last.
      silently and penalise as section 7?
 - Ready for phase 2: yes; the open questions do not block it (question 1 only decides where the
   phase 2 branch starts).
+- Answers (2026-10-19): 1) phase 0 pull request opened and merged into `main` (#2, merge commit
+  `251db89`); this branch rebased on `main` and opened as its own pull request; phase 2 starts
+  from `main` after both merges. 2) α is now defined per hour, α_step = 1 − (1 − α)^Δt:
+  `docs/FORMULATION.md` sections 3 and 5 and the `Battery` docstrings updated in `52e18cd`, with a
+  test that four 0.25 h idle steps lose as much as one 1 h step. 3) `Battery.step` keeps raising
+  on actions outside [−1, 1] or non-finite; in phase 3 the environment clips actions to the
+  `Box(−1, 1)` space before the nodes, without penalty for that clip, and raises on non-finite
+  actions.
