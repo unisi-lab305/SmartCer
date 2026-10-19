@@ -1034,6 +1034,11 @@ phase, in the format of section 9 of the brief, newest last.
     `smartcer/cer_data/<scenario>/oracle/` folder.
   - `make test-coverage` → 293 passed, 1 skipped (the DIISM test), coverage 96 %; new modules 94 to
     100 %.
+  - CI run 39267215317 on `8b048eb` → success:
+    - unit: 235 passed;
+    - integration: 50 passed, 9 skipped (local data absent);
+    - coverage: 96 %;
+    - the wheel imports every subpackage, `smartcer.forecasts` and `smartcer.oracle` included.
   - Speed, Leather year, random actions:
     - without forecasts: 408–426 µs per step (phase 6: 248–491), unchanged;
     - with PerfectForecast and H = 12: 538 µs per step, 4.7 s per year, observation of 135 values.
