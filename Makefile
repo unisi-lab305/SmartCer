@@ -4,7 +4,7 @@
 #
 # Run `make help` to list the available targets.
 
-.PHONY: test test-unit test-integration test-coverage version clean help
+.PHONY: test test-unit test-integration test-coverage bench version clean help
 
 # default target
 .DEFAULT_GOAL := help
@@ -26,6 +26,10 @@ test-coverage: ## Run tests with coverage report
 	@echo "Running tests with coverage..."
 	python -m pytest test/ --cov=smartcer --cov-report=term-missing --cov-report=html --cov-report=xml
 	@echo "Coverage report generated in htmlcov/index.html"
+
+# benchmark
+bench: ## Run the step benchmark (one year of the local Leather scenario, 3 episodes)
+	python benchmarks/bench_step.py
 
 # utility targets
 version: ## Verify version consistency between pyproject.toml and smartcer/__init__.py

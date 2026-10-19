@@ -61,6 +61,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   usable capacity, penalty statistics) and the
   Fit Score, documented in `smartcer/gym/metrics/KPI.md`
 - `SmartCerEnv.run_config()`, `SmartCerEnv.current_step` and `SmartCerEnv.scenario_path`
+- Step benchmark `benchmarks/bench_step.py` (`make bench`): whole-period episodes with random
+  actions, time per episode and per step
 
 ### Changed
 
@@ -112,6 +114,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 0.6.2 scenarios whose files have shifted timestamps (Leather) can be split with `start` and
   `end` anywhere: the period is selected on the first node's timestamps and every node is cut at
   the same rows; files with different numbers of rows raise `ValueError`
+- Speed (S13): one year of Leather (10 nodes, 4 batteries) with random actions takes 3.2 s
+  (364 µs per step) instead of 51-52 s with 0.6.2 on the same machine, 16 times faster (43 s in
+  the 0.6.2 measurement of the refactoring brief): CSV files are read once, a step reads
+  preloaded values without pandas, and the observation is built once per step from precomputed
+  static features
 
 ---
 

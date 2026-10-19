@@ -12,11 +12,12 @@ controls the batteries.
 
 **Status:** version 0.6.2 is being refactored into 1.0.0 following
 [docs/refactor/REFACTOR_v1.md](docs/refactor/REFACTOR_v1.md); progress, deviations and open
-questions are in [docs/refactor/PROGRESS.md](docs/refactor/PROGRESS.md). Phases 0-5 are complete:
+questions are in [docs/refactor/PROGRESS.md](docs/refactor/PROGRESS.md). Phases 0-6 are complete:
 the Gymnasium environment `SmartCer-v1` (`smartcer/gym/`, with its rewards, observation presets,
 baseline controllers, results tracking and KPIs) wraps the 1.0 physics and economics
 (`smartcer/core/`) and the scenario loader (`smartcer/data/`); all 0.6.2 modules were removed.
-Scenario and run arguments: [docs/CONFIG.md](docs/CONFIG.md).
+One year of Leather takes about 3 s (`make bench`). Scenario and run arguments:
+[docs/CONFIG.md](docs/CONFIG.md).
 
 **Authoritative formulation:** [docs/FORMULATION.md](docs/FORMULATION.md) defines the physics, the
 economics and the reward of SmartCer 1.0. It prevails over the code and over the papers. Do not
@@ -65,6 +66,8 @@ make test                   # all tests (unit + integration)
 make test-unit              # test/unit/ only
 make test-integration       # test/integration/ only
 make test-coverage          # coverage report (terminal, htmlcov/, coverage.xml)
+make bench                  # step benchmark: one year of the local Leather scenario, 3 episodes
+python benchmarks/bench_step.py --scenario <folder> --episodes 5 --observation extended
 make version                # check that pyproject.toml and smartcer/__init__.py agree
 make clean                  # remove caches, coverage and build files
 
@@ -234,7 +237,9 @@ SmartCer/
 │   ├── integration/data/           # mini_cer in both formats; Leather and the 0.6.2 reference
 │   └── integration/gym/            # check_env (Gymnasium, SB3), episodes, rewards, timing,
 │                                   # normaliser window and one year in the space, baselines,
-│                                   # SB3 results callback, SAC (slow)
+│                                   # SB3 results callback, performance rules and benchmark,
+│                                   # SAC (slow)
+├── benchmarks/                     # bench_step.py (time per step and per episode)
 ├── docs/                           # FORMULATION.md, CONFIG.md, refactor/REFACTOR_v1.md,
 │                                   # refactor/PROGRESS.md
 ├── .claude/commands/               # slash commands
@@ -242,7 +247,7 @@ SmartCer/
 ```
 
 Run outputs go to a folder chosen by the caller, e.g. `results/` (gitignored). The rest of the
-target 1.0 structure (forecasts, oracle, benchmarks) is in `docs/refactor/REFACTOR_v1.md` section
+target 1.0 structure (forecasts, oracle) is in `docs/refactor/REFACTOR_v1.md` section
 4; add it here only as it is created.
 
 ## Code Architecture
@@ -366,6 +371,10 @@ SmartCerEnv(scenario, start=None, end=None, episode_length=None, random_start=Fa
   without the charge cap; the clipping still uses the full bounds.
 
 **Action convention:** one action per battery in [-1, 1]; positive charges, negative discharges.
+
+**Performance rules** (phase 6, `test/integration/gym/test_env_performance.py`): no pandas code
+runs inside `step()` (nodes read preloaded Python floats, timestamps are a numpy array) and the
+observation is built once per step; measure changes with `benchmarks/bench_step.py`.
 
 ### Controllers, tracking and metrics, `smartcer/gym/controllers/`, `tracking/`, `metrics/`
 
