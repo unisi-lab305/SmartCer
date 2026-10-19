@@ -67,15 +67,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Forecast providers in `smartcer.forecasts` (`ForecastProvider` protocol, `PerfectForecast`):
   with `forecast='perfect'` (or a provider) and `forecast_horizon` H the observation gets the
   forecasts of generation and load of every battery node for the next H steps
-  (`forecast/<node>/<quantity>`), scaled like the current values; episodes stop H steps before the
-  end of the data and the provider is reset with the environment's random generator
+  (`forecast/<node>/<quantity>`), scaled like the current values; episodes stop early enough for
+  the forecasts of every step and of the step after the episode to lie in the data, and the
+  provider is reset with the environment's random generator
 - MILP oracle in `smartcer.oracle`: `OracleProvider` reads the optimal battery trajectories of an
   oracle folder (`trajectory.csv`, optional daily `objective.csv`; provisional format, parsed by
   the single adapter `read_oracle`) and computes the optimal actions; environment argument
-  `oracle`
-- `ReplayController` (`'replay'`) plays the oracle actions; `check_replay` replays them over the
-  whole period, checks that no step is penalised and that the welfare matches the MILP objective
-  within a relative tolerance (default 1e-3), and writes a per-day comparison
+  `oracle`; rows with simultaneous charge and discharge are counted and reported with an
+  `OracleWarning`
+- `ReplayController` (`'replay'`) plays the oracle actions; `check_replay` replays them over a
+  period of whole days, checks that no step is penalised and that the welfare matches the MILP
+  objective within a relative tolerance (default 1e-3), reports the rows with simultaneous charge
+  and discharge, and writes a per-day comparison
 
 ### Changed
 
@@ -116,7 +119,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   S3)
 - The 0.6.2 reward type `cost` is accepted when mapping a 0.6.2 run configuration (S2)
 - The current step's generation is observed only with `observe_current_step=True` (S7); identical
-  episodes give identical rewards (S9); the terminal observation describes the last step (S10);
+  episodes give identical rewards (S9); the terminal observation describes the step after the
+  episode, or its last step at the end of the data, instead of wrapping to step 0 (S10);
   `reset(seed)` also seeds the action space (S17)
 - The rule-based controller executes the intended energy: its action is the energy divided by the
   battery power, not by the capacity (S6)

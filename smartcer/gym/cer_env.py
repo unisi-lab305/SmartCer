@@ -33,9 +33,14 @@ class SmartCerEnv(gym.Env):
 
     Episodes cover `episode_length` steps of the scenario period, starting at its first step or,
     with `random_start`, at a step drawn with `self.np_random`. Every step of the episode is
-    controlled; the episode ends on its last step with `truncated=True` (`terminated` is always
-    False), and the terminal observation comes from that step. With a forecast horizon H the
-    episodes use the steps 0, ..., n_steps - H - 1 only, so that every forecast lies in the data.
+    controlled; the episode ends on its last step t with `truncated=True` (`terminated` is always
+    False). The terminal observation is the observation of step t + 1 with the final battery
+    states, as at the start of an episode beginning at t + 1, so that the value of the next state
+    can be bootstrapped; only without forecasts, on the last step of the data, it is the
+    observation of step t with the final battery states. With a forecast horizon H the episodes
+    use the steps 0, ..., n_steps - H - 2 with `observe_current_step=True` and 0, ...,
+    n_steps - H - 1 with False, so that the forecasts of every step of an episode and of the step
+    after it lie in the data.
 
     Actions are clipped to [-1, 1] without penalty, then each node clips its action to the dynamic
     bounds and is penalised as in section 7. Non-finite actions raise `ValueError`.
@@ -150,7 +155,16 @@ class SmartCerEnv(gym.Env):
                                            lookback=lookback, normalizer=normalizer,
                                            forecast=forecast, horizon=forecast_horizon)
         n_steps = community.n_steps
-        usable = n_steps - self._builder.horizon
+        horizon = self._builder.horizon
+        # last step whose observation lies in the data, forecasts included
+        last_observable = n_steps - 1 - (
+            self._builder.forecast_start(0) + horizon - 1 if horizon else 0)
+        # with forecasts the step after every episode must be observable too (terminal
+        # observation); without, the last step of the data falls back to its own observation
+        usable = last_observable if horizon else n_steps
+        if usable < 1:
+            raise ValueError(f'forecast horizon {horizon} leaves no step for the episodes (the '
+                             f'period has {n_steps} steps)')
         episode_length = usable if episode_length is None else int(episode_length)
         if not 1 <= episode_length <= usable:
             kept = f', the last {n_steps - usable} kept for the forecasts' if usable < n_steps \
@@ -172,6 +186,7 @@ class SmartCerEnv(gym.Env):
         # true future values of the forecast steps, for `info['privileged']`
         self._truth = PerfectForecast(community) if self.forecast is not None else None
         self._usable_steps = usable
+        self._last_observable = last_observable
         self.normalizer = self._builder.normalizer
         self.obs_layout = self._builder.layout
         self.observation_space = self._builder.space
@@ -208,7 +223,7 @@ class SmartCerEnv(gym.Env):
 
     @property
     def current_step(self) -> int:
-        """Index of the step the next action applies to (the last step once the episode ends)."""
+        """Step the next action applies to (the last step of the episode once it ends)."""
         return self._t
 
     def run_config(self) -> dict[str, Any]:
@@ -263,8 +278,8 @@ class SmartCerEnv(gym.Env):
         Data for the critic only, about the step of the observation they accompany.
 
         Args:
-            t: Step of the returned observation (the step of the next action; the last step of
-                the episode for the terminal observation).
+            t: Step of the returned observation (the step of the next action; for the terminal
+                observation the step after the episode, or its last step at the end of the data).
 
         Returns:
             dict[str, Any]: Empty without oracle and forecasts. Otherwise `t`; with an oracle,
@@ -328,7 +343,8 @@ class SmartCerEnv(gym.Env):
 
         Returns:
             tuple[np.ndarray, float, bool, bool, dict[str, Any]]: Observation of the next step (of
-            the same step at the end of the episode), reward R_t, terminated (always False),
+            the terminal observation at the end of the episode, see the class docstring), reward
+            R_t, terminated (always False),
             truncated (True on the last step of the episode) and info (see `_step_info`, plus
             `obs_clipped`: values of the returned observation clipped to [0, 1] because they lie
             outside the normaliser's training range).
@@ -354,15 +370,16 @@ class SmartCerEnv(gym.Env):
         truncated = t == self._episode_end
         if truncated:
             self._needs_reset = True
+            observed = t + 1 if t + 1 <= self._last_observable else t
         else:
-            self._t = t + 1
-        obs = self._builder.build(self._t)
-        info = self._step_info(result, clipped, reward)
+            self._t = observed = t + 1
+        obs = self._builder.build(observed)
+        info = self._step_info(result, clipped, reward, observed)
         info['obs_clipped'] = self._builder.last_clipped
         return obs, float(reward.total), False, truncated, info
 
     def _step_info(self, result: CommunityStep, action: np.ndarray,
-                   reward: RewardBreakdown) -> dict[str, Any]:
+                   reward: RewardBreakdown, observed: int) -> dict[str, Any]:
         """
         Info of a step: reward components, welfare breakdown, K_t and per-node results.
 
@@ -370,6 +387,7 @@ class SmartCerEnv(gym.Env):
             result: Community step record.
             action: Action after clipping to [-1, 1].
             reward: Reward breakdown.
+            observed: Step of the returned observation.
 
         Returns:
             dict[str, Any]: `t`, `timestamp`, `privileged`, `reward` (`type`, `main`, `penalty`
@@ -377,7 +395,7 @@ class SmartCerEnv(gym.Env):
             penalty, total), `welfare` (breakdown), `penalty` (K_t), `action` (after the [-1, 1]
             clip) and `nodes` (node id → NodeStep fields).
         """
-        info = self._info(result.t, self._t)
+        info = self._info(result.t, observed)
         w = result.welfare
         reward_info: dict[str, Any] = {'type': self.reward_type, 'main': reward.main,
                                        'penalty': reward.penalty, 'total': reward.total}

@@ -15,7 +15,7 @@ import pytest
 from smartcer.data import TimestampWarning, load_scenario
 from smartcer.gym import SmartCerEnv
 from smartcer.gym.controllers import ReplayController, check_replay, compute_baselines
-from smartcer.oracle import OracleProvider, read_oracle
+from smartcer.oracle import OracleProvider, OracleWarning, read_oracle
 
 
 pytestmark = pytest.mark.integration
@@ -49,6 +49,7 @@ def test_replay_of_a_synthetic_oracle_trajectory(mini_cer_v1_path: Path, synthet
     assert result.steps == 48
     assert result.penalty_steps == 0 and result.penalty_max <= 1e-9
     assert result.soc_error_max_kwh <= 1e-9
+    assert result.simultaneous_rows == 0
     assert result.relative_gap <= 1e-12
     assert result.objective == pytest.approx(result.welfare, rel=1e-12)
     assert result.fit_score == pytest.approx(100.0)
@@ -58,6 +59,7 @@ def test_replay_of_a_synthetic_oracle_trajectory(mini_cer_v1_path: Path, synthet
     np.testing.assert_allclose(daily['welfare'], daily['objective'], rtol=1e-12)
     summary = json.loads((output / 'oracle_replay.json').read_text(encoding='utf-8'))
     assert summary['passed'] is True and summary['rtol'] == RTOL
+    assert summary['simultaneous_rows'] == 0
     assert summary['run_config']['oracle'] == str(synthetic_oracle)
 
 
@@ -152,6 +154,54 @@ def test_replay_reports_infeasible_oracle_actions(mini_cer_v1_path: Path, synthe
     assert result.penalty_steps >= 1
     # k = 0.2 for pv_bat, averaged over the two batteries
     assert result.penalty_max == pytest.approx(0.1)
+
+
+def test_replay_reports_simultaneous_charge_and_discharge(mini_cer_v1_path: Path,
+                                                          synthetic_oracle: Path,
+                                                          tmp_path: Path) -> None:
+    """
+    Test that an oracle row with both powers positive is reported with a warning when the oracle
+    is loaded and counted in the `ReplayCheck` and in `oracle_replay.json`.
+
+    Args:
+        mini_cer_v1_path: Path of the 1.0-format synthetic scenario.
+        synthetic_oracle: Oracle folder of the synthetic scenario.
+        tmp_path: Pytest temporary directory.
+    """
+    path = synthetic_oracle / 'trajectory.csv'
+    trajectory = pd.read_csv(path)
+    row = (trajectory['datetime'] == '2022-01-03 05:00:00') & (trajectory['node_id'] == 'pv_bat')
+    trajectory.loc[row, ['p_cha_kw', 'p_dis_kw']] = [0.5, 1.0]
+    trajectory.to_csv(path, index=False)
+
+    with pytest.warns(OracleWarning, match='1 rows .* first at 2022-01-03 05:00:00'):
+        env = SmartCerEnv(mini_cer_v1_path, oracle=synthetic_oracle)
+    result = check_replay(env, tmp_path / 'out')
+
+    assert result.simultaneous_rows == 1
+    summary = json.loads((tmp_path / 'out' / 'oracle_replay.json').read_text(encoding='utf-8'))
+    assert summary['simultaneous_rows'] == 1
+
+
+@pytest.mark.parametrize(('start', 'end'), [('2022-01-03 06:00', None),
+                                            (None, '2022-01-04 12:00')])
+def test_replay_needs_whole_days(mini_cer_v1_path: Path, synthetic_oracle: Path, tmp_path: Path,
+                                 start: str | None, end: str | None) -> None:
+    """
+    Test that the replay rejects a period that starts after midnight or ends before the last step
+    of a day.
+
+    Args:
+        mini_cer_v1_path: Path of the 1.0-format synthetic scenario.
+        synthetic_oracle: Oracle folder of the synthetic scenario.
+        tmp_path: Pytest temporary directory.
+        start: First timestamp of the period.
+        end: Last timestamp of the period.
+    """
+    env = SmartCerEnv(mini_cer_v1_path, start=start, end=end, oracle=synthetic_oracle)
+
+    with pytest.raises(ValueError, match='whole days'):
+        check_replay(env, tmp_path / 'out')
 
 
 def test_replay_needs_an_oracle_and_the_whole_period(mini_cer_v1_path: Path,

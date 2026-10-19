@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 
 from smartcer.data import load_scenario
-from smartcer.oracle import OracleProvider, read_oracle
+from smartcer.oracle import OracleProvider, OracleWarning, read_oracle
 
 
 pytestmark = pytest.mark.unit
@@ -214,6 +214,34 @@ def test_provider_aligns_with_a_sub_period(tmp_path: Path, mini_cer_v1_path: Pat
 
     np.testing.assert_allclose(oracle.action(9), [0.0, 0.5])
     assert list(oracle.daily_objective) == [-2.0]
+
+
+def test_provider_counts_simultaneous_charge_and_discharge(tmp_path: Path,
+                                                          mini_cer_v1_path: Path) -> None:
+    """
+    Test that rows with p_cha > 0 and p_dis > 0 are counted in the period only and reported with
+    one warning naming the count and the first timestamp, and that a* is their net value
+    (pv_bat 2 kW in, 1 kW out of 5 kW → 0.2).
+
+    Args:
+        tmp_path: Pytest temporary directory.
+        mini_cer_v1_path: Path of the 1.0-format synthetic scenario.
+    """
+    table = full_trajectory()
+    set_row(table, 30, 'factory_bat', p_cha_kw=1.0, p_dis_kw=1.0)
+    set_row(table, 12, 'pv_bat', p_cha_kw=2.0, p_dis_kw=1.0)
+    set_row(table, 40, 'pv_bat', p_cha_kw=1.0)
+    folder = write_oracle(tmp_path / 'oracle', table)
+
+    with pytest.warns(OracleWarning, match='2 rows of the period charge and discharge in the same '
+                                           r"step .* first at 2022-01-03 12:00:00 \(node 'pv_bat'\)"):
+        oracle = OracleProvider.from_folder(folder, load_scenario(mini_cer_v1_path))
+    second_day = load_scenario(mini_cer_v1_path, start='2022-01-04 00:00')
+    with pytest.warns(OracleWarning, match='1 rows'):
+        assert OracleProvider.from_folder(folder, second_day).simultaneous_rows == 1
+
+    assert oracle.simultaneous_rows == 2
+    np.testing.assert_allclose(oracle.action(12), [0.2, 0.0])
 
 
 @pytest.mark.parametrize(('change', 'match'), [

@@ -9,11 +9,12 @@ from smartcer.oracle.provider import (
     TRAJECTORY_FILE,
     OracleData,
     OracleProvider,
+    OracleWarning,
     read_oracle,
 )
 
 
 __all__ = [
     'OBJECTIVE_COLUMNS', 'OBJECTIVE_FILE', 'TRAJECTORY_COLUMNS', 'TRAJECTORY_FILE', 'OracleData',
-    'OracleProvider', 'read_oracle',
+    'OracleProvider', 'OracleWarning', 'read_oracle',
 ]

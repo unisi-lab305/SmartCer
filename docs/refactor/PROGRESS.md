@@ -1102,3 +1102,32 @@ phase, in the format of section 9 of the brief, newest last.
      matches?
 - Ready for phase 8: yes. The pull request is open and waits for your review; you merge this
   phase yourself.
+
+- Review of pull request #9 (2026-10-19): two fixes, in their own commit `714353b`.
+  - d. Terminal observation: when an episode is truncated on step t and step t + 1 exists in the
+    data, the terminal observation and its `privileged` data are those of step t + 1 with the
+    final battery states; on the last step of the data they stay those of step t. One case the
+    request does not name: with forecasts and `observe_current_step=True` the last episode step
+    is n - H - 1, and the forecasts of step n - H would need step n, beyond the data, so the
+    terminal observation stays that of step t there too. `current_step` keeps the last step of
+    the episode. The env docstring, CONFIG.md, CLAUDE.md and CHANGELOG (S10) are updated.
+    Regression test `test_terminal_observation_is_the_next_step`: an episode of steps 10-21
+    with random start returns the observation and oracle data of step 22. With zero actions it
+    equals the reset observation of an episode starting at 22, with the same states of charge;
+    with random actions every feature but the state of charge and the bounds equals it, and
+    those match the final states of charge.
+  - e. Simultaneous charge and discharge: `OracleProvider` counts the rows of the period with
+    p_cha > 0 and p_dis > 0 (`simultaneous_rows`) and emits one `OracleWarning` with the count,
+    the first timestamp and the node. `ReplayCheck` and `oracle_replay.json` report the count;
+    it does not decide `passed`. `check_replay` raises `ValueError` unless the period starts at
+    00:00 and its last step ends at 24:00.
+  - `make test-coverage` → 298 passed, 1 skipped (the DIISM test), coverage 96 %.
+- Follow-up on d (2026-10-19): with forecasts and `observe_current_step=True` the usable period
+  is one step shorter, so episodes use the steps 0 … n − H − 2 and the terminal observation is
+  always that of step t + 1. With False they still use 0 … n − H − 1, whose next step is already
+  observable. The fallback to step t remains only without forecasts, on the last step of the
+  data. A horizon that leaves no step for the episodes (H = n − 1 with True) raises
+  `ValueError`. Docstrings, CONFIG.md, CLAUDE.md and CHANGELOG are updated. New test
+  `test_terminal_observation_with_forecasts_is_the_next_step`, for both timings: an episode
+  ending on the last usable step (43 or 44 of 48, H = 3) returns the observation of the next
+  step, with the true forecasts of steps 45-47.
