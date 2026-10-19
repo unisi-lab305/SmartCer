@@ -158,6 +158,13 @@ Other reward types, kept for compatibility and reported per node in `info`:
 - `profit`: per-node π^egr e^gri − π^igr i^gri − storage cost, plus the incentive for the collective variant;
 - `energy` (0.6.2 legacy): −(i^gri_{u,t})² per node.
 
+With m_{u,t} the per-node term above, each of these types has two variants:
+
+- collective: R_t = M_t − σ K_t, with M_t = Σ_u m_{u,t} over all nodes, plus I_t for `profit` (so that the collective `profit` equals `welfare`);
+- per node (`reward_per_node`, the 0.6.2 `single_agent`): r_{u,t} = m_{u,t} − σ k_{u,t} for every u ∈ U_b, reported in `info`, and the scalar reward is R_t = Σ_{u ∈ U_b} r_{u,t}.
+
+`welfare` has no per-node variant.
+
 No running reward scaling inside the environment; scaling, if wanted, is applied by a wrapper or by the training library.
 
 ## 12. Information timing

@@ -2,8 +2,9 @@
 Gymnasium environment `SmartCerEnv` (ID `SmartCer-v1`) for the battery control of a CER.
 
 One continuous action per battery, `Box(-1, 1, (N,), float32)` in `storage_node_ids` order; reward
-R_t = W_t - σ K_t (docs/FORMULATION.md sections 7, 10, 11); information timing set by
-`observe_current_step` (section 12). The environment wraps a `smartcer.core.Community`.
+R_t = W_t - σ K_t by default, other types in `smartcer.gym.rewards` (docs/FORMULATION.md sections
+7, 10, 11); information timing set by `observe_current_step` (section 12). The environment wraps a
+`smartcer.core.Community`.
 """
 
 from pathlib import Path
@@ -15,11 +16,9 @@ import numpy as np
 
 from smartcer.core.community import Community, CommunityStep
 from smartcer.data import load_scenario
-from smartcer.gym.observation import ObservationBuilder
+from smartcer.gym.observation import MinMaxNormalizer, ObservationBuilder, fit_normalizer
+from smartcer.gym.rewards import RewardBreakdown, make_reward
 from smartcer.gym.run_config import map_v062_run_config
-
-
-REWARD_TYPES = ('welfare',)
 
 
 class SmartCerEnv(gym.Env):
@@ -38,7 +37,11 @@ class SmartCerEnv(gym.Env):
         community: The scenario's community (nodes, batteries, incentive, timestamps).
         storage_node_ids: Identifiers of the battery nodes, in action order.
         obs_layout: Feature name → slice of the observation vector.
+        normalizer: Min-max normaliser of the observed generation and load (save it with
+            `env.normalizer.save(path)` to reuse it in an evaluation environment).
         observe_current_step: Information timing.
+        reward_type: Reward type.
+        reward_per_node: Whether the per-node variant of the reward is used.
         penalty_coefficient: σ of the reward.
         episode_length: Steps per episode.
         random_start: Whether episodes start at a random step.
@@ -57,7 +60,11 @@ class SmartCerEnv(gym.Env):
         random_start: bool = False,
         observe_current_step: bool = True,
         observation: str = 'meco',
+        lookback: int = 0,
+        normalizer: str | Path | MinMaxNormalizer | None = None,
+        normalizer_window: tuple[Any, Any] | None = None,
         reward: str = 'welfare',
+        reward_per_node: bool = False,
         penalty_coefficient: float = 10.0,
         seed: int | None = None,
     ) -> None:
@@ -73,8 +80,15 @@ class SmartCerEnv(gym.Env):
             random_start: Draw the first step of each episode uniformly among the feasible ones.
             observe_current_step: True: the observation of step t holds g, l and bounds of step t;
                 False: g and l of step t - 1 and a bound without the charge cap.
-            observation: Observation preset ('meco').
-            reward: Reward type ('welfare': R_t = W_t - σ K_t).
+            observation: Observation preset, 'meco' ([M24] Tab. II) or 'extended'.
+            lookback: Past steps of generation and load per battery node ('extended' only).
+            normalizer: Normaliser of generation and load: a `MinMaxNormalizer` or the path of
+                its JSON file; None fits one on `normalizer_window`.
+            normalizer_window: (first, last) timestamp of the training window the normaliser is
+                fitted on, both inclusive, within the period; None for the whole period.
+            reward: Reward type, 'welfare' (R_t = W_t - σ K_t), 'profit' or 'energy'.
+            reward_per_node: Per-node variant (not for 'welfare'): r_u = m_u - σ k_u per battery
+                node, reported in `info['reward']['nodes']`, and R_t = Σ_u r_u.
             penalty_coefficient: σ, ≥ 0 (default 10, as in [M24]).
             seed: Seed used by the first `reset()` called without a seed.
 
@@ -87,10 +101,15 @@ class SmartCerEnv(gym.Env):
             community = scenario
         else:
             community = load_scenario(scenario, start=start, end=end)
-        if reward not in REWARD_TYPES:
-            raise ValueError(f'unknown reward {reward!r}; available: {REWARD_TYPES}')
-        if not (np.isfinite(penalty_coefficient) and penalty_coefficient >= 0):
-            raise ValueError(f'penalty_coefficient must be ≥ 0, got {penalty_coefficient!r}')
+        self._reward = make_reward(reward, community.storage_node_ids,
+                                   penalty_coefficient=penalty_coefficient,
+                                   per_node=reward_per_node)
+        if normalizer is not None and normalizer_window is not None:
+            raise ValueError('give either normalizer (already fitted) or normalizer_window')
+        if normalizer is None:
+            normalizer = fit_normalizer(community, normalizer_window)
+        elif not isinstance(normalizer, MinMaxNormalizer):
+            normalizer = MinMaxNormalizer.load(normalizer)
         n_steps = community.n_steps
         episode_length = n_steps if episode_length is None else int(episode_length)
         if not 1 <= episode_length <= n_steps:
@@ -101,10 +120,13 @@ class SmartCerEnv(gym.Env):
         self.storage_node_ids = community.storage_node_ids
         self.observe_current_step = bool(observe_current_step)
         self.reward_type = reward
-        self.penalty_coefficient = float(penalty_coefficient)
+        self.reward_per_node = self._reward.per_node
+        self.penalty_coefficient = self._reward.penalty_coefficient
         self.episode_length = episode_length
         self.random_start = bool(random_start)
-        self._builder = ObservationBuilder(community, observation, self.observe_current_step)
+        self._builder = ObservationBuilder(community, observation, self.observe_current_step,
+                                           lookback=lookback, normalizer=normalizer)
+        self.normalizer = self._builder.normalizer
         self.obs_layout = self._builder.layout
         self.observation_space = self._builder.space
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(len(self.storage_node_ids),),
@@ -145,9 +167,10 @@ class SmartCerEnv(gym.Env):
             t: Step index.
 
         Returns:
-            dict[str, Any]: `t` and `timestamp`.
+            dict[str, Any]: `t`, `timestamp` and `privileged` (data for the critic only, empty
+            until the oracle and forecast providers of phase 7).
         """
-        return {'t': t, 'timestamp': self.community.timestamps[t]}
+        return {'t': t, 'timestamp': self.community.timestamps[t], 'privileged': {}}
 
     def reset(self, *, seed: int | None = None,
               options: dict[str, Any] | None = None) -> tuple[np.ndarray, dict[str, Any]]:
@@ -161,7 +184,7 @@ class SmartCerEnv(gym.Env):
 
         Returns:
             tuple[np.ndarray, dict[str, Any]]: First observation and info (`t`, `timestamp`,
-            `episode_start`, `episode_end`).
+            `privileged`, `episode_start`, `episode_end`).
         """
         if seed is None and self._default_seed is not None:
             seed, self._default_seed = self._default_seed, None
@@ -187,8 +210,8 @@ class SmartCerEnv(gym.Env):
 
         Returns:
             tuple[np.ndarray, float, bool, bool, dict[str, Any]]: Observation of the next step (of
-            the same step at the end of the episode), reward R_t = W_t - σ K_t, terminated (always
-            False), truncated (True on the last step of the episode) and info.
+            the same step at the end of the episode), reward R_t, terminated (always False),
+            truncated (True on the last step of the episode) and info.
 
         Raises:
             RuntimeError: If called before `reset()` or after the end of the episode.
@@ -206,9 +229,7 @@ class SmartCerEnv(gym.Env):
 
         t = self._t
         result = self.community.step(t, clipped)
-        welfare = result.welfare.total
-        penalty = self.penalty_coefficient * result.penalty
-        reward = welfare - penalty
+        reward = self._reward.compute(result)
 
         truncated = t == self._episode_end
         if truncated:
@@ -216,30 +237,35 @@ class SmartCerEnv(gym.Env):
         else:
             self._t = t + 1
         obs = self._builder.build(self._t)
-        return obs, float(reward), False, truncated, self._step_info(result, clipped, welfare,
-                                                                     penalty, reward)
+        return obs, float(reward.total), False, truncated, self._step_info(result, clipped, reward)
 
-    def _step_info(self, result: CommunityStep, action: np.ndarray, welfare: float,
-                   penalty: float, reward: float) -> dict[str, Any]:
+    def _step_info(self, result: CommunityStep, action: np.ndarray,
+                   reward: RewardBreakdown) -> dict[str, Any]:
         """
         Info of a step: reward components, welfare breakdown, K_t and per-node results.
 
         Args:
             result: Community step record.
             action: Action after clipping to [-1, 1].
-            welfare: W_t.
-            penalty: σ K_t.
-            reward: R_t.
+            reward: Reward breakdown.
 
         Returns:
-            dict[str, Any]: `t`, `timestamp`, `reward` (welfare, penalty, total), `welfare`
-            (breakdown), `penalty` (K_t), `action` (after the [-1, 1] clip) and `nodes`
-            (node id → NodeStep fields).
+            dict[str, Any]: `t`, `timestamp`, `privileged`, `reward` (`type`, `main`, `penalty`
+            = weighted penalty, `total` = R_t and, per-node variant, `nodes`: node id → main,
+            penalty, total), `welfare` (breakdown), `penalty` (K_t), `action` (after the [-1, 1]
+            clip) and `nodes` (node id → NodeStep fields).
         """
         info = self._info(result.t)
         w = result.welfare
+        reward_info: dict[str, Any] = {'type': self.reward_type, 'main': reward.main,
+                                       'penalty': reward.penalty, 'total': reward.total}
+        if reward.nodes is not None:
+            reward_info['nodes'] = {
+                node_id: {'main': r.main, 'penalty': r.penalty, 'total': r.total}
+                for node_id, r in reward.nodes.items()
+            }
         info.update(
-            reward={'welfare': welfare, 'penalty': penalty, 'total': reward},
+            reward=reward_info,
             welfare={
                 'revenue': w.revenue, 'cost': w.cost, 'storage_cost': w.storage_cost,
                 'incentive': w.incentive, 'shared_energy_kwh': w.shared_energy_kwh,

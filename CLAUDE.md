@@ -12,10 +12,10 @@ controls the batteries.
 
 **Status:** version 0.6.2 is being refactored into 1.0.0 following
 [docs/refactor/REFACTOR_v1.md](docs/refactor/REFACTOR_v1.md); progress, deviations and open
-questions are in [docs/refactor/PROGRESS.md](docs/refactor/PROGRESS.md). Phases 0-3 are complete:
-the Gymnasium environment `SmartCer-v1` (`smartcer/gym/`) wraps the 1.0 physics and economics
-(`smartcer/core/`) and the scenario loader (`smartcer/data/`); the 0.6.2 environment and models were
-removed. Still from 0.6.2 until phase 5: `smartcer/cer_metrics/` and `smartcer/storage_controllers/`.
+questions are in [docs/refactor/PROGRESS.md](docs/refactor/PROGRESS.md). Phases 0-4 are complete:
+the Gymnasium environment `SmartCer-v1` (`smartcer/gym/`, with its rewards and observation presets)
+wraps the 1.0 physics and economics (`smartcer/core/`) and the scenario loader (`smartcer/data/`);
+the 0.6.2 environment and models were removed. Still from 0.6.2 until phase 5: `smartcer/cer_metrics/` and `smartcer/storage_controllers/`.
 Scenario and run arguments: [docs/CONFIG.md](docs/CONFIG.md).
 
 **Authoritative formulation:** [docs/FORMULATION.md](docs/FORMULATION.md) defines the physics, the
@@ -208,7 +208,11 @@ SmartCer/
 │   │                               # loader.py (load_scenario, read_config)
 │   ├── gym/                        # __init__.py (register_envs, ENV_ID), cer_env.py (SmartCerEnv),
 │   │   │                           # run_config.py (map_v062_run_config)
-│   │   └── observation/            # encoders.py, schema.py (ObservationBuilder, preset meco)
+│   │   ├── observation/            # encoders.py, normalizers.py (MinMaxNormalizer), schema.py
+│   │   │                           # (ObservationBuilder, presets meco and extended, fit_normalizer)
+│   │   └── rewards/                # base.py (RewardCalculator, RewardBreakdown), calculators.py
+│   │                               # (welfare, profit, energy), config.py (REWARD_REGISTRY,
+│   │                               # make_reward)
 │   ├── cer_metrics/                # 0.6.2: scores.py (compute_kpis), KPI.md (until phase 5)
 │   ├── storage_controllers/        # 0.6.2: abc_controller.py, rbc_controller.py (until phase 5)
 │   └── cer_data/                   # local scenarios (gitignored, read-only)
@@ -219,18 +223,19 @@ SmartCer/
 │   ├── fixtures/local/             # 0.6.2 reference values on Leather (gitignored)
 │   ├── unit/core/                  # layer rules of smartcer/core/; storage/, nodes/, community/
 │   ├── unit/data/                  # schema and loader on small scenarios written to tmp_path
-│   ├── unit/gym/                   # observation, run configuration, actions and arguments
+│   ├── unit/gym/                   # observation features, normaliser, rewards, run configuration,
+│   │                               # actions and arguments
 │   ├── unit/v062/                  # known defect S6 of the 0.6.2 controller (until phase 5)
 │   ├── integration/data/           # mini_cer in both formats; Leather and the 0.6.2 reference
-│   └── integration/gym/            # check_env (Gymnasium, SB3), episodes, timing, SAC (slow)
+│   └── integration/gym/            # check_env (Gymnasium, SB3), episodes, rewards, timing,
+│                                       # normaliser window and one year in the space, SAC (slow)
 ├── docs/                           # FORMULATION.md, CONFIG.md, refactor/REFACTOR_v1.md,
 │                                   # refactor/PROGRESS.md
 ├── .claude/commands/               # slash commands
 └── .github/workflows/              # ci.yml, release.yml
 ```
 
-The rest of the target 1.0 structure (rewards, controllers, tracking, metrics, forecasts,
-oracle) is in `docs/refactor/REFACTOR_v1.md` section 4; add it here only as it is created.
+The rest of the target 1.0 structure (controllers, tracking, metrics, forecasts, oracle) is in `docs/refactor/REFACTOR_v1.md` section 4; add it here only as it is created.
 
 ## Code Architecture
 
@@ -304,29 +309,47 @@ Node(node_id, node_type, delta_t, generation_kwh, load_kwh, sell_price, buy_pric
 
 ```
 SmartCerEnv(scenario, start=None, end=None, episode_length=None, random_start=False,
-            observe_current_step=True, observation='meco', reward='welfare',
+            observe_current_step=True, observation='meco', lookback=0, normalizer=None,
+            normalizer_window=None, reward='welfare', reward_per_node=False,
             penalty_coefficient=10.0, seed=None)
-    - community (Community), storage_node_ids (action order), obs_layout (name → slice)
+    - community (Community), storage_node_ids (action order), obs_layout (name → slice),
+      normalizer (MinMaxNormalizer, `.save(path)`; pass the path as `normalizer` to reuse it)
     - action_space Box(-1, 1, (N,), float32); observation_space flat Box (ObservationBuilder)
     - reset(seed, options) → (obs, info): batteries to S^ini, first step 0 or random (np_random),
       seeds the action space
     - step(action) → (obs, reward, terminated=False, truncated, info)
         clip action to [-1, 1] (no penalty; non-finite → ValueError) → Community.step(t, action)
-        reward = W_t - σ K_t; truncated on the last step of the episode, whose observation is
+        → reward calculator (R_t = W_t - σ K_t by default); truncated on the last step of the
+        episode, whose observation is
         the terminal one (same step, new state); step() then needs a reset
-    - from_v062_config(cer_path, cer_config) → SmartCerEnv (0.6.2 run keys, DeprecationWarning)
+    - from_v062_config(cer_path, cer_config) → SmartCerEnv (0.6.2 run keys, DeprecationWarning;
+      single_agent True → reward_per_node, 'energy' → reward 'energy')
 ```
 
-- `info` of a step: `t`, `timestamp`, `reward` (`welfare`, `penalty` = σK, `total`), `welfare`
-  (breakdown), `penalty` (K_t), `action` (after the [-1, 1] clip), `nodes` (node id → NodeStep
-  fields). `info['privileged']` is reserved for phase 7.
-- Observation preset `meco` (`smartcer/gym/observation/schema.py`): `time/month`, `time/hour`
+- `info` of a step: `t`, `timestamp`, `privileged` (`{}` until phase 7, also in the reset info),
+  `reward` (`type`, `main`, `penalty` = weighted penalty, `total` = R_t, and `nodes` with
+  `reward_per_node`), `welfare` (breakdown), `penalty` (K_t), `action` (after the [-1, 1] clip),
+  `nodes` (node id → NodeStep fields).
+- Rewards (`smartcer/gym/rewards/`, FORMULATION section 11): template method in
+  `RewardCalculator.compute(step) → RewardBreakdown(main, penalty, total, nodes)`: collective
+  M_t - σ K_t, or per node r_u = m_u - σ k_u over the battery nodes with R_t = Σ_u r_u. Types
+  `welfare` (W_t, collective only), `profit` (revenue - cost - storage cost per node; collective
+  adds I_t, equal to `welfare`), `energy` (-i_u², 0.6.2 legacy). `make_reward` reads the read-only
+  `REWARD_REGISTRY` (`MappingProxyType`); no reward scaling.
+- Observation (`smartcer/gym/observation/schema.py`), sections `time`, `price`, `community`,
+  `nodes`, `forecast` (`ObservationBuilder.sections`). Preset `meco`: `time/month`, `time/hour`
   (sin, cos), `time/day_of_week` (one-hot); prices as `price/sell`, `price/buy` if all nodes share
   them, else `<node>/sell_price`, `<node>/buy_price` per battery node; per battery node
-  `<node>/generation`, `<node>/load` (min-max over the period), `<node>/soc` (scaled to
-  [S^min, S^max]), `<node>/a_lower`, `<node>/a_upper`. Static features are precomputed for every
-  step; only SoC and bounds are computed in `step()`. Bounds of constant features are widened by 1
-  so that low < high.
+  `<node>/generation`, `<node>/load`, `<node>/soc` (scaled to [S^min, S^max]), `<node>/a_lower`,
+  `<node>/a_upper`. Preset `extended` adds `time/holiday` (Italian national holidays),
+  `community/generation`, `community/load` (totals of the nodes without a battery) and, with
+  `lookback` L, `<node>/generation_lookback`, `<node>/load_lookback` (L values, most recent first);
+  the `forecast` section is empty until phase 7. Static features are precomputed for every step;
+  only SoC and bounds are computed in `step()`. Bounds of constant features are widened by 1 so
+  that low < high.
+- Generation and load are min-max scaled with a `MinMaxNormalizer` fitted by `fit_normalizer` on
+  the training window `normalizer_window` only, then clipped to [0, 1]; JSON via `save`/`load`
+  (bounds, window, scenario name).
 - `observe_current_step=False`: g and l of step t - 1 (0 at the first row of the data) and A^upper
   without the charge cap; the clipping still uses the full bounds.
 
