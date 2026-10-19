@@ -12,9 +12,10 @@ controls the batteries.
 
 **Status:** version 0.6.2 is being refactored into 1.0.0 following
 [docs/refactor/REFACTOR_v1.md](docs/refactor/REFACTOR_v1.md); progress, deviations and open
-questions are in [docs/refactor/PROGRESS.md](docs/refactor/PROGRESS.md). Phase 0 (infrastructure
-and safety net) is complete: the package code is still the 0.6.2 code, now covered by
-characterisation tests and by strict expected-failure tests of its known defects.
+questions are in [docs/refactor/PROGRESS.md](docs/refactor/PROGRESS.md). Phases 0 (infrastructure
+and safety net) and 1 (battery) are complete: the environment is still the 0.6.2 code, covered by
+characterisation tests and by strict expected-failure tests of its known defects; the new 1.0
+battery model lives in `smartcer/core/storage/` and is not used by the 0.6.2 environment.
 
 **Authoritative formulation:** [docs/FORMULATION.md](docs/FORMULATION.md) defines the physics, the
 economics and the reward of SmartCer 1.0. It prevails over the code and over the papers. Do not
@@ -191,6 +192,8 @@ Git tags mark released versions (`vX.Y.Z`). `v0.6.2` marks the code before the r
 SmartCer/
 ├── smartcer/                       # package (0.6.2 code)
 │   ├── __init__.py                 # __version__, registration of SmartCer-v0
+│   ├── core/                       # 1.0 physics and economics, no Gymnasium import
+│   │   └── storage/                # base.py (StorageSystem), battery.py (Battery, BatteryStep)
 │   ├── cer_env.py                  # SmartCer environment (gym.Env)
 │   ├── cer_utils.py                # node loader, OHESpace, energy trade, TIP, CSV and JSON export
 │   ├── cer_models/                 # node_models.py (Node, Producer, Consumer, Prosumer),
@@ -204,6 +207,7 @@ SmartCer/
 │   ├── conftest.py                 # shared fixtures, description of the synthetic scenario
 │   ├── fixtures/mini_cer/          # synthetic scenario, 0.6.2 format, 4 nodes, 48 h (committed)
 │   ├── fixtures/local/             # 0.6.2 reference values on Leather (gitignored)
+│   ├── unit/core/                  # layer rules of smartcer/core/; storage/: Battery tests
 │   ├── unit/v062/                  # TIP coefficient; known defects S2, S4, S5, S6
 │   └── integration/v062/           # characterisation; known defects S3, S7-S10; reference values
 ├── scripts/make_reference_v062.py  # writes test/fixtures/local/ (deleted in phase 3)
@@ -216,6 +220,43 @@ The target 1.0 structure (`smartcer/core/`, `smartcer/data/`, `smartcer/gym/`, .
 `docs/refactor/REFACTOR_v1.md` section 4; add it here only as it is created.
 
 ## Code Architecture
+
+### Layer rule
+
+`smartcer/core/` holds the physics and economics of `docs/FORMULATION.md` and imports neither
+`gymnasium` nor `smartcer.gym`; it has no `print`, `sys.exit` or `assert` (checked by
+`test/unit/core/test_layer_rules.py`).
+
+### Storage (1.0), `smartcer/core/storage/`
+
+```
+StorageSystem (ABC): get_bounds(delta_t, charge_cap_kwh), step(action, delta_t, charge_cap_kwh), reset()
+└── Battery(capacity, power_charge_max, power_discharge_max, efficiency_charge, efficiency_discharge,
+            soc_min=0.0, soc_initial=None, alpha=0.0, usage_cost=0.0, charge_limit='production')
+    - get_bounds(delta_t, charge_cap_kwh) → (a_upper, a_lower), both in [0, 1]; does not change the state
+    - step(action, delta_t, charge_cap_kwh) → BatteryStep (frozen dataclass)
+    - reset() → state of charge back to soc_initial
+    - from_config(config) → Battery from a 1.0 or 0.6.2 `storage` section
+```
+
+- Formulation sections 4-7: self-discharge s̃ = max(S^min, (1 - α)^Δt s) first (`alpha` is per
+  hour), then bounds from s̃,
+  clipping of the action to [-a_lower, a_upper] with penalty k, then
+  s = s̃ + η^cha p^cha Δt - p^dis Δt / η^dis. Both power limits are on the node side.
+- `charge_cap_kwh` is the cap c of section 6, computed by the node from `charge_limit`
+  (`production`: c = g; `surplus`: c = max(0, g - l)); `None` means no cap. The battery stores
+  `charge_limit` but does not use it.
+- `soc_min` and `soc_initial` are fractions of capacity (`soc_initial` defaults to `soc_min`);
+  the state is `soc_kwh`, with `soc_min_kwh` and `soc_initial_kwh`.
+- `BatteryStep` fields: `action_requested`, `action_applied`, `a_upper`, `a_lower`, `p_cha_kw`,
+  `p_dis_kw`, `charge_kwh` (node → battery), `discharge_kwh` (battery → node), `throughput_kwh`
+  (cell side), `storage_cost` (`usage_cost` × throughput, section 10), `penalty` (k), `soc_kwh`.
+- Invalid parameters, actions outside [-1, 1] or non-finite, `delta_t ≤ 0` and negative caps raise
+  `ValueError`; a state of charge outside [S^min, S^max] by more than 1e-9 kWh raises
+  `RuntimeError` (implementation error); within 1e-9 it is clamped to the limit.
+- `from_config` maps the 0.6.2 keys with a `DeprecationWarning` (`rated_power` → both power limits,
+  `efficiency` → both efficiencies, `alfa` → `alpha`, `beta` ignored); unknown keys, a 0.6.2 key
+  combined with its 1.0 target and missing required keys raise `ValueError`.
 
 ### 0.6.2 data flow
 
@@ -261,8 +302,9 @@ are reproduced by tests marked `xfail(strict=True)` in `test/*/v062/test_known_d
 - Tests on local data (`test/fixtures/local/`, `smartcer/cer_data/`) skip when it is missing; tests
   on optional dependencies use `pytest.importorskip`
 - Known defects: `@pytest.mark.xfail(strict=True, raises=<expected exception>, reason='S<n>: ...')`;
-  an unexpected pass fails the suite. When a defect is fixed, replace its test with a regression
-  test on the new API
+  an unexpected pass fails the suite. When a defect is fixed in a new module, add a regression
+  test on the new API named `test_s<n>_...`; the 0.6.2 xfail test stays until its module is
+  removed in phase 3
 
 ## Code Style Conventions
 
@@ -311,7 +353,7 @@ def example_function(param1: int, param2: str, optional_param: float = 1.0) -> t
 | Quantity | Unit | Notes |
 |----------|------|-------|
 | Energy, capacity | kWh | CSV values are energies per step (0.6.2: per hour) |
-| Power | kW | 0.6.2 has no time step: `rated_power` is used as kWh per step, correct only for hourly data (defect S5) |
+| Power | kW | 1.0 (`smartcer.core`): energy = power × Δt. 0.6.2 has no time step: `rated_power` is used as kWh per step, correct only for hourly data (defect S5) |
 | Time step | hours | `delta_t` from 1.0 (`docs/FORMULATION.md` section 2) |
 | Prices, incentives | €/kWh | `price_exp` sell, `price_imp` buy; TIP parameters in €/kWh |
 | State of charge | kWh | `soc_min` is configured as a fraction of capacity and stored in kWh |

@@ -35,7 +35,7 @@ Where the two papers differ, the battery dynamics of [S22] prevail, because the 
 | S^ini_u | initial state of charge | kWh | `storage.soc_initial` as a fraction of capacity (default = `soc_min`) |
 | P^cha_u, P^dis_u | maximum charge and discharge power, node side | kW | `storage.power_charge_max`, `storage.power_discharge_max` (0.6.2: `rated_power` for both) |
 | η^cha_u, η^dis_u | charge and discharge efficiency | – | `storage.efficiency_charge`, `storage.efficiency_discharge` (0.6.2: `efficiency` for both) |
-| α_u | self-discharge per step | – | `storage.alpha` (default 0; 0.6.2: `alfa`) |
+| α_u | self-discharge per hour (fraction of the state of charge lost in one hour) | – | `storage.alpha` (default 0; 0.6.2: `alfa`, per hourly step) |
 | σ | penalty coefficient | – | `reward.penalty_coefficient` (default 10, as in [M24]) |
 | s_{u,t} | state of charge at the end of step t | kWh | state |
 | a_{u,t} | normalised action | – | action |
@@ -52,10 +52,10 @@ Charge and discharge are never simultaneous by construction.
 
 ## 5. Battery dynamics
 
-[S22] eq. 6-8, with optional self-discharge applied before the step and clamped at S^min (α = 0 reproduces the papers):
+[S22] eq. 6-8, with optional self-discharge applied before the step and clamped at S^min (α = 0 reproduces the papers). α_u is defined per hour and converted to the step, so that the loss per hour does not depend on ΔT:
 
 $$
-\tilde s_{u,t-1} = \max\big(S^{min}_u,\ (1 - \alpha_u)\, s_{u,t-1}\big)
+\alpha^{step}_u = 1 - (1 - \alpha_u)^{\Delta T}, \qquad \tilde s_{u,t-1} = \max\big(S^{min}_u,\ (1 - \alpha^{step}_u)\, s_{u,t-1}\big) = \max\big(S^{min}_u,\ (1 - \alpha_u)^{\Delta T}\, s_{u,t-1}\big)
 $$
 
 $$
