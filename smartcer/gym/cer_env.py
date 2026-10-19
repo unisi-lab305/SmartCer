@@ -184,7 +184,8 @@ class SmartCerEnv(gym.Env):
 
         Returns:
             tuple[np.ndarray, dict[str, Any]]: First observation and info (`t`, `timestamp`,
-            `privileged`, `episode_start`, `episode_end`).
+            `privileged`, `episode_start`, `episode_end`, `obs_clipped`: values of the observation
+            clipped to [0, 1] because they lie outside the normaliser's training range).
         """
         if seed is None and self._default_seed is not None:
             seed, self._default_seed = self._default_seed, None
@@ -198,7 +199,8 @@ class SmartCerEnv(gym.Env):
         self._needs_reset = False
         self.community.reset()
         info = self._info(start)
-        info.update(episode_start=start, episode_end=self._episode_end)
+        info.update(episode_start=start, episode_end=self._episode_end,
+                    obs_clipped=int(self._builder.clipped[start]))
         return self._builder.build(start), info
 
     def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
@@ -211,7 +213,9 @@ class SmartCerEnv(gym.Env):
         Returns:
             tuple[np.ndarray, float, bool, bool, dict[str, Any]]: Observation of the next step (of
             the same step at the end of the episode), reward R_t, terminated (always False),
-            truncated (True on the last step of the episode) and info.
+            truncated (True on the last step of the episode) and info (see `_step_info`, plus
+            `obs_clipped`: values of the returned observation clipped to [0, 1] because they lie
+            outside the normaliser's training range).
 
         Raises:
             RuntimeError: If called before `reset()` or after the end of the episode.
@@ -237,7 +241,9 @@ class SmartCerEnv(gym.Env):
         else:
             self._t = t + 1
         obs = self._builder.build(self._t)
-        return obs, float(reward.total), False, truncated, self._step_info(result, clipped, reward)
+        info = self._step_info(result, clipped, reward)
+        info['obs_clipped'] = int(self._builder.clipped[self._t])
+        return obs, float(reward.total), False, truncated, info
 
     def _step_info(self, result: CommunityStep, action: np.ndarray,
                    reward: RewardBreakdown) -> dict[str, Any]:

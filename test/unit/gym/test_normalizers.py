@@ -27,6 +27,12 @@ def test_fit_and_transform_clip_to_unit_interval() -> None:
     assert normalizer.transform('a/load', np.array([[3.0, 5.0]])).tolist() == [[0.0, 0.0]]
     with pytest.raises(KeyError, match='b/load'):
         normalizer.transform('b/load', [1.0])
+    # the values that transform clips
+    assert normalizer.outside_range('a/generation', [2.0, 4.0, 8.0, 0.0]).tolist() == [
+        False, False, True, True]
+    assert normalizer.outside_range('a/load', [3.0, 5.0]).tolist() == [False, True]
+    with pytest.raises(KeyError, match='b/load'):
+        normalizer.outside_range('b/load', [1.0])
 
 
 def test_save_and_load_round_trip(tmp_path: Path) -> None:

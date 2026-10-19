@@ -328,6 +328,7 @@ SmartCerEnv(scenario, start=None, end=None, episode_length=None, random_start=Fa
 ```
 
 - `info` of a step: `t`, `timestamp`, `privileged` (`{}` until phase 7, also in the reset info),
+  `obs_clipped` (values of the returned observation clipped to [0, 1], also in the reset info),
   `reward` (`type`, `main`, `penalty` = weighted penalty, `total` = R_t, and `nodes` with
   `reward_per_node`), `welfare` (breakdown), `penalty` (K_t), `action` (after the [-1, 1] clip),
   `nodes` (node id → NodeStep fields).
@@ -342,14 +343,15 @@ SmartCerEnv(scenario, start=None, end=None, episode_length=None, random_start=Fa
   (sin, cos), `time/day_of_week` (one-hot); prices as `price/sell`, `price/buy` if all nodes share
   them, else `<node>/sell_price`, `<node>/buy_price` per battery node; per battery node
   `<node>/generation`, `<node>/load`, `<node>/soc` (scaled to [S^min, S^max]), `<node>/a_lower`,
-  `<node>/a_upper`. Preset `extended` adds `time/holiday` (Italian national holidays),
+  `<node>/a_upper`. Preset `extended` adds `time/holiday` (Italian national holidays only),
   `community/generation`, `community/load` (totals of the nodes without a battery) and, with
   `lookback` L, `<node>/generation_lookback`, `<node>/load_lookback` (L values, most recent first);
   the `forecast` section is empty until phase 7. Static features are precomputed for every step;
   only SoC and bounds are computed in `step()`. Bounds of constant features are widened by 1 so
   that low < high.
 - Generation and load are min-max scaled with a `MinMaxNormalizer` fitted by `fit_normalizer` on
-  the training window `normalizer_window` only, then clipped to [0, 1]; JSON via `save`/`load`
+  the training window `normalizer_window` only, then clipped to [0, 1]
+  (`ObservationBuilder.clipped` counts the clipped values per step); JSON via `save`/`load`
   (bounds, window, scenario name).
 - `observe_current_step=False`: g and l of step t - 1 (0 at the first row of the data) and A^upper
   without the charge cap; the clipping still uses the full bounds.

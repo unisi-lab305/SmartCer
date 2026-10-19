@@ -118,6 +118,26 @@ class MinMaxNormalizer:
         low, high = self.bounds[name]
         return np.clip(min_max(values, low, high), 0.0, 1.0)
 
+    def outside_range(self, name: str, values: ArrayLike) -> np.ndarray:
+        """
+        Values outside the training range of a series, which `transform` clips.
+
+        Args:
+            name: Series name.
+            values: Values.
+
+        Returns:
+            np.ndarray: Boolean mask, True where a value is below the minimum or above the maximum.
+
+        Raises:
+            KeyError: If the series has no bounds.
+        """
+        if name not in self.bounds:
+            raise KeyError(f'normaliser has no bounds for {name!r}')
+        low, high = self.bounds[name]
+        values = np.asarray(values, dtype=np.float64)
+        return (values < low) | (values > high)
+
     def to_dict(self) -> dict[str, Any]:
         """
         JSON-serialisable representation.

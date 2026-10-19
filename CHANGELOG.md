@@ -45,6 +45,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   window (`normalizer_window`, default the whole period), saved to and loaded from JSON
   (`env.normalizer.save(path)`, `normalizer=path`)
 - `info['privileged']` (empty) in the reset and step info, reserved for the critic's data
+- `info['obs_clipped']` in the reset and step info: the number of observation values clipped to
+  [0, 1] because they lie outside the normaliser's training range
 
 ### Changed
 

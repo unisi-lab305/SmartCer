@@ -196,7 +196,7 @@ in order:
 | Section | Features | Presets |
 |---|---|---|
 | time | `time/month`, `time/hour` (sin, cos), `time/day_of_week` (one-hot, Monday first) | both |
-| time | `time/holiday`: 1 on Italian national holidays (`holidays` package), else 0 | `extended` |
+| time | `time/holiday`: 1 on Italian national holidays (`holidays` package), else 0; regional and local holidays (e.g. the patron saint of a municipality) are not included | `extended` |
 | price | `price/sell`, `price/buy`, €/kWh, not normalised, when all nodes share the same series; otherwise per battery node (below) | both |
 | community | `community/generation`, `community/load`: totals of the nodes without a battery | `extended` |
 | nodes | per battery node, in action order: [`<node>/sell_price`, `<node>/buy_price`], `<node>/generation`, `<node>/load`, [`<node>/generation_lookback`, `<node>/load_lookback`: `lookback` values, most recent first], `<node>/soc` (scaled to [S^min, S^max]), `<node>/a_lower`, `<node>/a_upper` | both (lookback: `extended`) |
@@ -204,7 +204,8 @@ in order:
 
 Generation and load (also the community totals and the lookback) are min-max scaled with the
 bounds of the training window `normalizer_window` and clipped to [0, 1], so that values beyond the
-training range (e.g. in a test period) stay inside the space. With `observe_current_step=False`
+training range (e.g. in a test period) stay inside the space; `info['obs_clipped']` counts them.
+With `observe_current_step=False`
 they are those of step t - 1; values before the first row of the data are 0. Save the normaliser of
 a training environment and pass it to the evaluation one:
 
@@ -216,13 +217,17 @@ test = SmartCerEnv('path/to/scenario', start='2022-10-01 00:00', normalizer='nor
 
 ### Info
 
-`info` of `reset()`: `t`, `timestamp`, `privileged`, `episode_start`, `episode_end`. `info` of
-`step()`: `t`, `timestamp`, `privileged`, `reward` (`type`, `main`, `penalty` = weighted penalty,
+`info` of `reset()`: `t`, `timestamp`, `privileged`, `episode_start`, `episode_end`,
+`obs_clipped`. `info` of `step()`: `t`, `timestamp`, `privileged`, `obs_clipped`, `reward` (`type`,
+`main`, `penalty` = weighted penalty,
 `total` = R_t and, with `reward_per_node`, `nodes`: node → `main`, `penalty`, `total`), `welfare`
 (revenue, cost, storage cost, incentive, shared, exported and imported energy, total), `penalty`
 (K_t), `action` (after the [-1, 1] clip) and `nodes` (per-node flows, economics, state of charge,
 requested and applied action, bounds). `privileged` holds data for the critic only and stays empty
-until the oracle and forecast providers.
+until the oracle and forecast providers. `obs_clipped` is the number of values of the returned
+observation that were clipped to [0, 1] because they lie outside the normaliser's training range
+(the zeros before the first row of the data are not counted); it is 0 when the normaliser is fitted
+on the whole period.
 
 ### 0.6.2 run keys
 

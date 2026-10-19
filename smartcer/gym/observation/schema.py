@@ -5,7 +5,8 @@ Each environment builds its own schema from the community and the run arguments 
 lookback, normaliser). Sections, in this order:
 
 - `time`: `time/month`, `time/hour` cyclical (sin, cos); `time/day_of_week` one-hot (Monday
-  first); `extended` only: `time/holiday` (1 on Italian national holidays, `holidays` package);
+  first); `extended` only: `time/holiday` (1 on Italian national holidays, `holidays` package;
+  no regional or local holidays);
 - `price`: `price/sell`, `price/buy`, one global pair, not normalised, when every node that sells
   has the same sell price series and every node that buys has the same buy price series;
   otherwise the prices are `<node_id>/sell_price` and `<node_id>/buy_price` inside each battery
@@ -19,7 +20,8 @@ lookback, normaliser). Sections, in this order:
 - `forecast`: reserved for the forecasts (`forecast/<node_id>/<quantity>`), empty for now.
 
 Preset `meco` is [M24] Tab. II. Generation and load (also the aggregates and the lookback) are
-min-max scaled with a `MinMaxNormalizer` fitted on a training window and clipped to [0, 1].
+min-max scaled with a `MinMaxNormalizer` fitted on a training window and clipped to [0, 1]; the
+number of clipped values of each step's observation is in `ObservationBuilder.clipped`.
 
 With `observe_current_step=True` the observation used to choose the action of step t holds g, l,
 prices and bounds of step t; with False it holds g and l of step t - 1, the prices of step t, and
@@ -157,6 +159,9 @@ class ObservationBuilder:
         sections: Section name → feature names, in order (`forecast` is empty).
         space: The observation space, `Box(low, high, (dim,), float32)`.
         global_prices: True if the prices are one global pair.
+        clipped: Per step, the number of scaled values of the observation that lie outside the
+            normaliser's training range and are clipped to [0, 1] (the zeros before the first
+            row of the data are not counted).
     """
 
     def __init__(self, community: Community, preset: str = 'meco',
@@ -206,6 +211,7 @@ class ObservationBuilder:
         highs: list[np.ndarray] = []
         self.layout: dict[str, slice] = {}
         self.sections: dict[str, list[str]] = {name: [] for name in SECTIONS}
+        self.clipped = np.zeros(community.n_steps, dtype=np.int64)
 
         def add(section: str, name: str, values: np.ndarray, low: float | np.ndarray,
                 high: float | np.ndarray) -> slice:
@@ -224,6 +230,9 @@ class ObservationBuilder:
 
         def add_scaled(section: str, name: str, key: str, lags: list[int]) -> None:
             values = np.column_stack([lagged(series[key], k) for k in lags])
+            # the zeros before the first row are padding, not clipped data
+            outside = normalizer.outside_range(key, series[key])
+            self.clipped += np.column_stack([lagged(outside, k) for k in lags]).sum(axis=1)
             add(section, name, normalizer.transform(key, values), 0.0, 1.0)
 
         timestamps = pd.DatetimeIndex(community.timestamps)

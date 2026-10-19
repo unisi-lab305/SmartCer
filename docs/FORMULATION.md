@@ -165,6 +165,8 @@ With m_{u,t} the per-node term above, each of these types has two variants:
 
 `welfare` has no per-node variant.
 
+With N = |U_b| batteries the penalty of the per-node variant is Σ_{u ∈ U_b} σ k_{u,t} = N σ K_t, N times the collective one, and the main terms differ too: collective and per-node rewards, including their training curves, are not numerically comparable.
+
 No running reward scaling inside the environment; scaling, if wanted, is applied by a wrapper or by the training library.
 
 ## 12. Information timing
