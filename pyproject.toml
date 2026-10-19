@@ -16,8 +16,6 @@ dependencies = [
     "holidays>=0.35",
     "numpy>=1.26.0",
     "pandas>=2.1.0",
-    # used by the 0.6.2 environment (smartcer/cer_env.py); removed together with it in phase 3
-    "tqdm>=4.66.5",
 ]
 
 classifiers = [
@@ -53,6 +51,11 @@ all = [
 Homepage = "https://github.com/unisi-lab305/SmartCer"
 Repository = "https://github.com/unisi-lab305/SmartCer"
 Documentation = "https://github.com/unisi-lab305/SmartCer/blob/main/README.md"
+
+# registration for Gymnasium < 1.0, which loads this entry point group on import; Gymnasium >= 1.0
+# no longer does, and SmartCer-v1 is registered on `import smartcer`
+[project.entry-points."gymnasium.envs"]
+__root__ = "smartcer.gym:register_envs"
 
 [tool.setuptools.packages.find]
 include = ["smartcer*"]

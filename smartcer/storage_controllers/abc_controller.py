@@ -1,5 +1,11 @@
-from smartcer.cer_models.node_models import Producer, Prosumer
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
+
+# smartcer.cer_models was removed in phase 3 of the 1.0 refactoring; this module goes in phase 5
+if TYPE_CHECKING:
+    from smartcer.cer_models.node_models import Producer, Prosumer
 
 from typing import Annotated, Any, Literal, TypeVar, List, Dict, OrderedDict, Union
 
