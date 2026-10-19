@@ -18,6 +18,8 @@ efficiency 0.9.
 """
 
 import collections
+from collections.abc import Callable
+import json
 from pathlib import Path
 import shutil
 from typing import Any, Dict
@@ -30,7 +32,9 @@ from smartcer.cer_env import SmartCer
 
 FIXTURES_PATH = Path(__file__).parent / 'fixtures'
 MINI_CER_PATH = FIXTURES_PATH / 'mini_cer'
+MINI_CER_V1_PATH = FIXTURES_PATH / 'mini_cer_v1'
 LOCAL_FIXTURES_PATH = FIXTURES_PATH / 'local'
+CER_DATA_PATH = Path(__file__).parents[1] / 'smartcer' / 'cer_data'
 
 
 # =================================
@@ -61,6 +65,60 @@ def mini_cer_copy(tmp_path: Path) -> Path:
         Path: Folder of the copy.
     """
     return Path(shutil.copytree(MINI_CER_PATH, tmp_path / 'mini_cer'))
+
+
+@pytest.fixture
+def mini_cer_v1_path() -> Path:
+    """
+    Path of the synthetic scenario in the 1.0 format (same nodes, data and parameters).
+
+    Returns:
+        Path: Folder `test/fixtures/mini_cer_v1/` (read it, do not modify it).
+    """
+    return MINI_CER_V1_PATH
+
+
+@pytest.fixture
+def mini_cer_v1_copy(tmp_path: Path) -> Path:
+    """
+    Writable copy of the 1.0-format synthetic scenario.
+
+    Args:
+        tmp_path: Pytest temporary directory.
+
+    Returns:
+        Path: Folder of the copy.
+    """
+    return Path(shutil.copytree(MINI_CER_V1_PATH, tmp_path / 'mini_cer_v1'))
+
+
+@pytest.fixture
+def write_scenario(tmp_path: Path) -> Callable[..., Path]:
+    """
+    Factory writing a 1.0-format scenario into the temporary directory.
+
+    The returned function takes the `nodes` section, a mapping from CSV path (relative to the
+    scenario) to CSV text, and optional top-level keys (defaults: delta_t 1, units kWh, uniform
+    incentive 0.1 €/kWh).
+
+    Args:
+        tmp_path: Pytest temporary directory.
+
+    Returns:
+        Callable[..., Path]: Function returning the scenario folder.
+    """
+    def write(nodes: Dict[str, Any], csv_files: Dict[str, str], **top: Any) -> Path:
+        folder = tmp_path / 'scenario'
+        folder.mkdir(exist_ok=True)
+        config = {'format_version': '1.0', 'delta_t': 1.0, 'units': 'kWh',
+                  'incentive': {'model': 'uniform', 'unit_value': 0.1}, **top, 'nodes': nodes}
+        (folder / 'config.json').write_text(json.dumps(config))
+        for name, text in csv_files.items():
+            (folder / name).parent.mkdir(parents=True, exist_ok=True)
+            (folder / name).write_text(text)
+        return folder
+
+    return write
 
 
 # =================================
@@ -142,3 +200,17 @@ def local_fixtures_path() -> Path:
     if not LOCAL_FIXTURES_PATH.is_dir():
         pytest.skip('local reference values missing: run scripts/make_reference_v062.py')
     return LOCAL_FIXTURES_PATH
+
+
+@pytest.fixture
+def leather_path() -> Path:
+    """
+    Folder of the local Leather scenario (gitignored, read-only).
+
+    Returns:
+        Path: `smartcer/cer_data/Leather/`; the test is skipped when it is missing.
+    """
+    path = CER_DATA_PATH / 'Leather'
+    if not (path / 'config.json').is_file():
+        pytest.skip('local scenario smartcer/cer_data/Leather missing')
+    return path

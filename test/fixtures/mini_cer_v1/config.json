@@ -1,0 +1,41 @@
+{
+  "format_version": "1.0",
+  "name": "mini_cer_v1",
+  "description": "test/fixtures/mini_cer in the 1.0 format: same nodes, data and parameters",
+  "delta_t": 1.0,
+  "units": "kWh",
+  "incentive": {"model": "tip"},
+  "nodes": {
+    "pv_bat": {
+      "type": "producer",
+      "category": "plant",
+      "csv": "data/pv_bat.csv",
+      "photovoltaic": {"tip_base": 0.08, "tip_threshold": 0.12, "fi_zone": 0.01, "pnrr": 0.0},
+      "storage": {
+        "capacity": 20, "power_charge_max": 5, "power_discharge_max": 5,
+        "efficiency_charge": 0.9, "efficiency_discharge": 0.9, "soc_min": 0.1
+      }
+    },
+    "house_1": {
+      "type": "consumer",
+      "category": "retail",
+      "csv": "data/house.csv"
+    },
+    "factory_bat": {
+      "type": "prosumer",
+      "category": "factory",
+      "csv": "data/factory_bat.csv",
+      "photovoltaic": {"tip_base": 0.08, "tip_threshold": 0.12, "fi_zone": 0.01, "pnrr": 40.0},
+      "storage": {
+        "capacity": 40, "power_charge_max": 10, "power_discharge_max": 10,
+        "efficiency_charge": 0.9, "efficiency_discharge": 0.9, "soc_min": 0.1
+      }
+    },
+    "shop": {
+      "type": "prosumer",
+      "category": "retail",
+      "csv": "data/shop.csv",
+      "photovoltaic": {"tip_base": 0.08, "tip_threshold": 0.12, "fi_zone": 0.01, "pnrr": 20.0}
+    }
+  }
+}
