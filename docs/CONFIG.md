@@ -182,6 +182,9 @@ The run is configured by the arguments of `SmartCerEnv` (`smartcer.gym`), also a
 | `reward` | `'welfare'` | reward type: `'welfare'` (R_t = W_t - σ K_t), `'profit'` or `'energy'` (FORMULATION section 11) |
 | `reward_per_node` | `False` | per-node variant of `'profit'` or `'energy'`: r_u = m_u - σ k_u per battery node in `info['reward']['nodes']`, scalar reward Σ_u r_u |
 | `penalty_coefficient` | `10.0` | σ |
+| `forecast` | `None` | forecasts of the observation's `forecast` section: `'perfect'` (true future values, `smartcer.forecasts.PerfectForecast`) or a provider with `reset(rng)` and `get(t, horizon)` (`smartcer.forecasts.ForecastProvider`) |
+| `forecast_horizon` | `0` | forecast horizon H in steps, ≥ 1 with `forecast`; episodes then use the steps 0 … n - H - 1 of the period only, so that every forecast lies in the data |
+| `oracle` | `None` | MILP oracle: an oracle folder (below) or a `smartcer.oracle.OracleProvider` of the same community; its data go to `info['privileged']` and to the `ReplayController` |
 | `seed` | `None` | seed used by the first `reset()` called without a seed |
 
 Actions are clipped to [-1, 1] without penalty before the nodes clip them to their dynamic bounds
@@ -200,11 +203,14 @@ in order:
 | price | `price/sell`, `price/buy`, €/kWh, not normalised, when all nodes share the same series; otherwise per battery node (below) | both |
 | community | `community/generation`, `community/load`: totals of the nodes without a battery | `extended` |
 | nodes | per battery node, in action order: [`<node>/sell_price`, `<node>/buy_price`], `<node>/generation`, `<node>/load`, [`<node>/generation_lookback`, `<node>/load_lookback`: `lookback` values, most recent first], `<node>/soc` (scaled to [S^min, S^max]), `<node>/a_lower`, `<node>/a_upper` | both (lookback: `extended`) |
-| forecast | reserved for `forecast/<node>/<quantity>`, empty | – |
+| forecast | with `forecast`, per battery node in action order: `forecast/<node>/generation`, `forecast/<node>/load`, H values each, ordered by lead time: steps t + 1 … t + H with `observe_current_step=True`, t … t + H - 1 with `False` (FORMULATION section 12); empty without `forecast` | both |
 
-Generation and load (also the community totals and the lookback) are min-max scaled with the
+Generation and load (also the community totals, the lookback and the forecasts, which use the
+bounds of `<node>/generation` and `<node>/load`) are min-max scaled with the
 bounds of the training window `normalizer_window` and clipped to [0, 1], so that values beyond the
 training range (e.g. in a test period) stay inside the space; `info['obs_clipped']` counts them.
+The forecast provider is reset with `env.np_random` at every `reset()`, so that a stochastic
+provider is reproducible from the seed.
 With `observe_current_step=False`
 they are those of step t - 1; values before the first row of the data are 0. Save the normaliser of
 a training environment and pass it to the evaluation one:
@@ -223,8 +229,13 @@ test = SmartCerEnv('path/to/scenario', start='2022-10-01 00:00', normalizer='nor
 `total` = R_t and, with `reward_per_node`, `nodes`: node → `main`, `penalty`, `total`), `welfare`
 (revenue, cost, storage cost, incentive, shared, exported and imported energy, total), `penalty`
 (K_t), `action` (after the [-1, 1] clip) and `nodes` (per-node flows, economics, state of charge,
-requested and applied action, bounds). `privileged` holds data for the critic only and stays empty
-until the oracle and forecast providers. `obs_clipped` is the number of values of the returned
+requested and applied action, bounds). `privileged` holds data for the critic only, about the step
+of the observation it comes with (the step of the next action; the last step again with the
+terminal observation). It is empty without `oracle` and `forecast`; otherwise it holds `t` (that
+step), with `oracle` `oracle_action` (a\*_t, one value per battery in action order) and
+`oracle_soc` (the oracle state of charge at the end of step t, kWh), and with `forecast`
+`true_future` (`'<node>/<quantity>'` → the true values of the observed forecast steps, kWh per
+step). `obs_clipped` is the number of values of the returned
 observation that were clipped to [0, 1] because they lie outside the normaliser's training range
 (the zeros before the first row of the data are not counted); it is 0 when the normaliser is fitted
 on the whole period.
@@ -274,4 +285,40 @@ The same tables come from any run through the `TrackResults` wrapper
 Stable-Baselines3 training, from `ResultsCallback(output_dir, save_freq)`, which also logs the KPIs
 of each episode under `smartcer/`.
 
-Forecast and oracle providers are added in phase 7.
+### Oracle files
+
+The MILP outputs of the DIISM are read by `smartcer.oracle.read_oracle`, the only function that
+knows their format. The format below is provisional, pending the DIISM answers (brief section 8).
+An oracle folder holds:
+
+| File | Columns | Content |
+|---|---|---|
+| `trajectory.csv` | `datetime`, `node_id`, `p_cha_kw`, `p_dis_kw`, `soc_kwh` | one row per step and battery node, in any order. `datetime`: start of the step, without time zone, as in the scenario CSV files. `p_cha_kw`, `p_dis_kw`: average charge and discharge power of the step on the node side (FORMULATION section 4), ≥ 0 (values down to -1e-9 are read as 0). `soc_kwh`: state of charge at the end of the step |
+| `objective.csv` (optional) | `date`, `objective` | one row per calendar day: the MILP objective of the day as a welfare in € (FORMULATION section 10, larger is better) |
+
+Other columns are ignored. The node ids must be the battery nodes of the scenario, every step of
+the period needs a row for every battery node (rows outside the period are ignored), and every day
+of the period needs an objective. `OracleProvider` computes a\* = p^cha / P^cha - p^dis / P^dis per
+step and rejects |a\*| > 1 + 1e-9.
+
+`check_replay` plays a\* over the whole period with the `ReplayController` (create the environment
+without `episode_length` and forecasts) and checks that K_t ≤ 1e-9 at every step and, with an
+objective, that the cumulative welfare lies within `rtol` (default 1e-3) of the cumulative
+objective:
+
+```python
+from smartcer.gym import SmartCerEnv
+from smartcer.gym.controllers import check_replay
+
+env = SmartCerEnv('path/to/scenario', oracle='path/to/scenario/oracle')
+result = check_replay(env, 'results/oracle_replay', rtol=1e-3)   # ReplayCheck; result.passed
+```
+
+| File | Content |
+|---|---|
+| `oracle_daily.csv` | one row per day: `date`, `welfare` of the replay and, with an objective, `objective` and `difference` = welfare - objective |
+| `oracle_replay.json` | the `ReplayCheck` fields (steps, penalty maximum and steps, largest state-of-charge difference from the oracle, welfare, objective, relative gap, rtol, Fit Score of the daily welfare against the objective, passed) and the run configuration |
+
+`compute_baselines(env, folder, controllers=['naive', 'rbc_community', 'replay'])` also writes the
+tables of the replay. The replay test of the test suite looks for oracle folders in
+`smartcer/cer_data/<scenario>/oracle/` and is skipped when there is none.

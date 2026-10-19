@@ -17,17 +17,24 @@ lookback, normaliser). Sections, in this order:
   `<node_id>/load`, [`extended` with lookback L: `<node_id>/generation_lookback`,
   `<node_id>/load_lookback`, L values each, most recent first], `<node_id>/soc` (scaled to
   [S^min, S^max] → [0, 1]), `<node_id>/a_lower`, `<node_id>/a_upper` (in [0, 1]);
-- `forecast`: reserved for the forecasts (`forecast/<node_id>/<quantity>`), empty for now.
+- `forecast` (with a forecast provider and horizon H): per battery node, in `storage_node_ids`
+  order, `forecast/<node_id>/generation` and `forecast/<node_id>/load`, H values each, ordered by
+  lead time (the first value is the step after the last observed one), scaled with the bounds of
+  `<node_id>/generation` and `<node_id>/load`; empty without a provider.
 
-Preset `meco` is [M24] Tab. II. Generation and load (also the aggregates and the lookback) are
-min-max scaled with a `MinMaxNormalizer` fitted on a training window and clipped to [0, 1]; the
-number of clipped values of each step's observation is in `ObservationBuilder.clipped`.
+Preset `meco` is [M24] Tab. II. Generation and load (also the aggregates, the lookback and the
+forecasts) are min-max scaled with a `MinMaxNormalizer` fitted on a training window and clipped to
+[0, 1]; the number of clipped values of each step's observation is in `ObservationBuilder.clipped`
+(without the forecasts, which are counted when the observation is built:
+`ObservationBuilder.last_clipped`).
 
 With `observe_current_step=True` the observation used to choose the action of step t holds g, l,
 prices and bounds of step t; with False it holds g and l of step t - 1, the prices of step t, and
 an upper bound computed without the charge cap, so that it does not reveal g of step t
 (docs/FORMULATION.md section 12). The lookback holds the L steps before the observed g and l.
-Values before the first row of the data are 0.
+Values before the first row of the data are 0. The forecasts cover the H steps after the observed
+g and l: t + 1, ..., t + H with `observe_current_step=True`, t, ..., t + H - 1 with False; the
+environment keeps its episodes H steps away from the end of the data.
 """
 
 from typing import Any
@@ -38,6 +45,7 @@ import numpy as np
 import pandas as pd
 
 from smartcer.core.community import Community
+from smartcer.forecasts import FORECAST_QUANTITIES, ForecastProvider
 from smartcer.gym.observation.encoders import cyclical, one_hot
 from smartcer.gym.observation.normalizers import MinMaxNormalizer
 
@@ -156,17 +164,23 @@ class ObservationBuilder:
         lookback: Past steps of g and l per battery node (`extended` only).
         normalizer: Min-max normaliser of generation and load.
         layout: Feature name → slice of the observation vector.
-        sections: Section name → feature names, in order (`forecast` is empty).
+        sections: Section name → feature names, in order (`forecast` is empty without a forecast
+            provider).
         space: The observation space, `Box(low, high, (dim,), float32)`.
         global_prices: True if the prices are one global pair.
         clipped: Per step, the number of scaled values of the observation that lie outside the
             normaliser's training range and are clipped to [0, 1] (the zeros before the first
-            row of the data are not counted).
+            row of the data are not counted), without the forecasts.
+        forecast: Forecast provider, or None.
+        horizon: Forecast horizon H in steps (0 without a provider).
+        forecast_keys: `'<node_id>/<quantity>'` of the forecasts in the observation, in order.
+        last_clipped: Clipped values of the last built observation, forecasts included.
     """
 
     def __init__(self, community: Community, preset: str = 'meco',
                  observe_current_step: bool = True, lookback: int = 0,
-                 normalizer: MinMaxNormalizer | None = None) -> None:
+                 normalizer: MinMaxNormalizer | None = None,
+                 forecast: ForecastProvider | None = None, horizon: int = 0) -> None:
         """
         Precompute the step-independent features of every step.
 
@@ -176,10 +190,13 @@ class ObservationBuilder:
             observe_current_step: Information timing.
             lookback: Past steps of g and l per battery node, ≥ 0 (> 0 only with 'extended').
             normalizer: Normaliser of generation and load; None fits one on the whole period.
+            forecast: Forecast provider of the `forecast` section, or None.
+            horizon: Forecast horizon H in steps, ≥ 1 with a provider, 0 without.
 
         Raises:
-            ValueError: If the preset is unknown, the lookback is invalid, a node id is a reserved
-                layout prefix or the normaliser lacks a series.
+            ValueError: If the preset is unknown, the lookback or the horizon is invalid, a node id
+                is a reserved layout prefix or the normaliser lacks a series.
+            TypeError: If the forecast provider lacks `reset` or `get`.
         """
         if preset not in OBSERVATION_PRESETS:
             raise ValueError(f'unknown observation preset {preset!r}; available: '
@@ -189,6 +206,17 @@ class ObservationBuilder:
         if lookback and preset != 'extended':
             raise ValueError(f'lookback is available with the extended preset only, got preset '
                              f'{preset!r}')
+        if not isinstance(horizon, (int, np.integer)):
+            raise ValueError(f'forecast horizon must be an integer, got {horizon!r}')
+        if forecast is None and horizon != 0:
+            raise ValueError(f'a forecast horizon ({horizon}) needs a forecast provider')
+        if forecast is not None:
+            if not isinstance(forecast, ForecastProvider):
+                raise TypeError(f'forecast provider {forecast!r} must have reset(rng) and '
+                                f'get(t, horizon)')
+            if not 1 <= horizon < community.n_steps:
+                raise ValueError(f'forecast horizon must lie in [1, {community.n_steps - 1}] '
+                                 f'(the period has {community.n_steps} steps), got {horizon}')
         reserved = [i for i in community.node_ids if i in RESERVED_PREFIXES]
         if reserved:
             raise ValueError(f'node ids {reserved} are reserved observation prefixes '
@@ -280,6 +308,26 @@ class ObservationBuilder:
             a_upper = add('nodes', f'{prefix}/a_upper', zeros, 0.0, 1.0)
             self._dynamic.append((soc.start, a_lower.start, a_upper.start))
 
+        self.forecast = forecast
+        self.horizon = int(horizon)
+        self.forecast_keys = tuple(f'{node.node_id}/{quantity}' for node in self._battery_nodes
+                                   for quantity in FORECAST_QUANTITIES) \
+            if forecast is not None else ()
+        self._forecast_offset = 1 if observe_current_step else 0
+        if self.forecast_keys:
+            # placeholders, filled at every step from the provider
+            zeros = np.zeros((community.n_steps, self.horizon))
+            slices = [add('forecast', f'forecast/{key}', zeros, 0.0, 1.0)
+                      for key in self.forecast_keys]
+            self._forecast_slice = slice(slices[0].start, slices[-1].stop)
+            bounds = np.array([normalizer.bounds[key] for key in self.forecast_keys])
+            self._forecast_low = np.repeat(bounds[:, 0], self.horizon)
+            self._forecast_high = np.repeat(bounds[:, 1], self.horizon)
+            span = self._forecast_high - self._forecast_low
+            # a constant series maps to 0, as in `min_max`
+            self._forecast_scale = np.divide(1.0, span, out=np.zeros_like(span), where=span > 0)
+        self.last_clipped = 0
+
         self._static = np.hstack(columns)
         low = np.concatenate(lows).astype(np.float32)
         high = np.concatenate(highs).astype(np.float32)
@@ -291,17 +339,69 @@ class ObservationBuilder:
         """Length of the observation vector."""
         return self._static.shape[1]
 
+    def forecast_start(self, t: int) -> int:
+        """
+        First forecast step of the observation of step t.
+
+        Args:
+            t: Step index.
+
+        Returns:
+            int: t + 1 with `observe_current_step=True`, t with False.
+        """
+        return t + self._forecast_offset
+
+    def _forecast_values(self, t: int) -> np.ndarray:
+        """
+        Forecasts of the observation of step t, in layout order, unscaled.
+
+        Args:
+            t: Step index.
+
+        Returns:
+            np.ndarray: H values per key of `forecast_keys` (kWh per step).
+
+        Raises:
+            ValueError: If the provider lacks a key, or returns a series that does not have H
+                finite values.
+        """
+        values = self.forecast.get(self.forecast_start(t), self.horizon)
+        missing = [key for key in self.forecast_keys if key not in values]
+        if missing:
+            raise ValueError(f'forecast provider {self.forecast!r} returned no {missing}')
+        arrays = [np.asarray(values[key], dtype=np.float64) for key in self.forecast_keys]
+        if any(a.shape != (self.horizon,) for a in arrays):
+            shapes = {key: a.shape for key, a in zip(self.forecast_keys, arrays)}
+            raise ValueError(f'forecast provider {self.forecast!r} must return {self.horizon} '
+                             f'values per series, got shapes {shapes}')
+        raw = np.concatenate(arrays)
+        if not np.all(np.isfinite(raw)):
+            raise ValueError(f'forecast provider {self.forecast!r} returned non-finite values '
+                             f'for step {t}')
+        return raw
+
     def build(self, t: int) -> np.ndarray:
         """
-        Observation for choosing the action of step t, from the current battery states.
+        Observation for choosing the action of step t, from the current battery states and, with
+        a forecast provider, its forecasts.
 
         Args:
             t: Step index.
 
         Returns:
             np.ndarray: Float32 vector inside `space`.
+
+        Raises:
+            ValueError: If the forecast provider returns invalid forecasts.
         """
         obs = self._static[t].copy()
+        self.last_clipped = int(self.clipped[t])
+        if self.forecast_keys:
+            raw = self._forecast_values(t)
+            obs[self._forecast_slice] = np.clip(
+                (raw - self._forecast_low) * self._forecast_scale, 0.0, 1.0)
+            self.last_clipped += int(np.count_nonzero((raw < self._forecast_low)
+                                                      | (raw > self._forecast_high)))
         for node, (i_soc, i_lower, i_upper) in zip(self._battery_nodes, self._dynamic):
             battery = node.battery
             span = battery.capacity - battery.soc_min_kwh

@@ -23,23 +23,24 @@ PANDAS_DIR = str(Path(pd.__file__).parent)
 BENCHMARK = Path(__file__).parents[3] / 'benchmarks' / 'bench_step.py'
 
 
-def make_env(path: Path) -> SmartCerEnv:
+def make_env(path: Path, oracle: Path) -> SmartCerEnv:
     """
     Environment exercising the optional step paths: extended preset with lookback, causal timing,
-    per-node rewards.
+    per-node rewards, perfect forecasts and an oracle.
 
     Args:
         path: Scenario folder.
+        oracle: Oracle folder of the scenario.
 
     Returns:
         SmartCerEnv: The environment.
     """
     return SmartCerEnv(path, observation='extended', lookback=2, observe_current_step=False,
                        reward='profit', reward_per_node=True, episode_length=24,
-                       random_start=True)
+                       random_start=True, forecast='perfect', forecast_horizon=3, oracle=oracle)
 
 
-def test_step_runs_no_pandas_code(mini_cer_v1_path: Path) -> None:
+def test_step_runs_no_pandas_code(mini_cer_v1_path: Path, synthetic_oracle: Path) -> None:
     """
     Test that no function of the pandas package is called inside `step()` (0.6.2 read every value
     through pandas, 86% of its step time, defect S13). The profiler sees every Python-level pandas
@@ -48,8 +49,9 @@ def test_step_runs_no_pandas_code(mini_cer_v1_path: Path) -> None:
 
     Args:
         mini_cer_v1_path: Path of the 1.0-format synthetic scenario.
+        synthetic_oracle: Oracle folder of the synthetic scenario.
     """
-    env = make_env(mini_cer_v1_path)
+    env = make_env(mini_cer_v1_path, synthetic_oracle)
     env.reset(seed=0)
     actions = np.random.default_rng(0).uniform(-1.0, 1.0, size=(24, 2))
     called: set[str] = set()
@@ -69,7 +71,7 @@ def test_step_runs_no_pandas_code(mini_cer_v1_path: Path) -> None:
     assert [name for name in called if name.startswith(PANDAS_DIR)] == []
 
 
-def test_observation_is_built_once_per_step(mini_cer_v1_path: Path,
+def test_observation_is_built_once_per_step(mini_cer_v1_path: Path, synthetic_oracle: Path,
                                             monkeypatch: pytest.MonkeyPatch) -> None:
     """
     Test that reset and every step build the observation exactly once (0.6.2 computed it twice per
@@ -77,9 +79,10 @@ def test_observation_is_built_once_per_step(mini_cer_v1_path: Path,
 
     Args:
         mini_cer_v1_path: Path of the 1.0-format synthetic scenario.
+        synthetic_oracle: Oracle folder of the synthetic scenario.
         monkeypatch: Pytest monkeypatch fixture.
     """
-    env = make_env(mini_cer_v1_path)
+    env = make_env(mini_cer_v1_path, synthetic_oracle)
     build: Callable[[int], np.ndarray] = env._builder.build
     calls: list[int] = []
 

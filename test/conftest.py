@@ -24,7 +24,11 @@ from pathlib import Path
 import shutil
 from typing import Any, Dict
 
+import numpy as np
+import pandas as pd
 import pytest
+
+from smartcer.data import load_scenario
 
 
 FIXTURES_PATH = Path(__file__).parent / 'fixtures'
@@ -102,6 +106,49 @@ def write_scenario(tmp_path: Path) -> Callable[..., Path]:
         return folder
 
     return write
+
+
+@pytest.fixture
+def synthetic_oracle(tmp_path: Path) -> Path:
+    """
+    Oracle folder of the 1.0-format synthetic scenario, in the provisional format of
+    `smartcer.oracle` (`trajectory.csv`, `objective.csv`).
+
+    The trajectory stands in for the MILP output: every battery takes, at every step, a random
+    fraction of its dynamic bound (A^upper or -A^lower, seed 7), so it is never penalised; the
+    objective is the welfare of that run per day. The trajectory rows are shuffled.
+
+    Args:
+        tmp_path: Pytest temporary directory.
+
+    Returns:
+        Path: Folder `<tmp_path>/oracle`.
+    """
+    community = load_scenario(MINI_CER_V1_PATH)
+    community.reset()
+    rng = np.random.default_rng(7)
+    rows, welfare = [], []
+    for t in range(community.n_steps):
+        actions = []
+        for node_id in community.storage_node_ids:
+            a_upper, a_lower = community.node(node_id).get_bounds(t)
+            fraction = rng.uniform()
+            actions.append(fraction * a_upper if rng.uniform() < 0.5 else -fraction * a_lower)
+        result = community.step(t, np.array(actions))
+        stamp = str(pd.Timestamp(community.timestamps[t]))
+        rows += [{'datetime': stamp, 'node_id': r.node_id, 'p_cha_kw': r.p_cha_kw,
+                  'p_dis_kw': r.p_dis_kw, 'soc_kwh': r.soc_kwh}
+                 for r in result.nodes if r.soc_kwh is not None]
+        welfare.append(result.welfare.total)
+    folder = tmp_path / 'oracle'
+    folder.mkdir()
+    trajectory = pd.DataFrame(rows).sample(frac=1.0, random_state=7)
+    trajectory.to_csv(folder / 'trajectory.csv', index=False)
+    days = pd.DatetimeIndex(community.timestamps).date
+    objective = pd.Series(welfare).groupby(days).sum()
+    pd.DataFrame({'date': [str(d) for d in objective.index], 'objective': objective.to_numpy()}
+                 ).to_csv(folder / 'objective.csv', index=False)
+    return folder
 
 
 # =========================
