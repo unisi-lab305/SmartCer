@@ -8,7 +8,7 @@ only the observation.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar
+from typing import Any
 
 import gymnasium as gym
 import numpy as np
@@ -21,11 +21,12 @@ class Controller(ABC):
     Chooses the actions of a `SmartCerEnv`, one per battery.
 
     Attributes:
-        name: Controller name, used for the output folders of a run.
+        name: Controller name, used for the output folders of a run; a subclass may set it
+            per instance (e.g. from a mode).
         env: The unwrapped environment the controller acts on.
     """
 
-    name: ClassVar[str]
+    name: str
 
     def __init__(self, env: gym.Env) -> None:
         """
@@ -61,5 +62,6 @@ class Controller(ABC):
             info: Latest info of the environment.
 
         Returns:
-            np.ndarray: One action per battery in [-1, 1], float32, in `storage_node_ids` order.
+            np.ndarray: One action per battery in [-1, 1], float32 or float64, in
+            `storage_node_ids` order.
         """

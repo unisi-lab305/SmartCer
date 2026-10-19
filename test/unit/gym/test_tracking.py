@@ -76,7 +76,8 @@ def test_tracker_tables_hold_the_step_info(mini_cer_v1_path: Path) -> None:
     assert nodes['factory_bat']['soc_kwh'].tolist() == \
         [i['nodes']['factory_bat']['soc_kwh'] for i in infos]
     assert 'reward' not in nodes['factory_bat'].columns
-    assert tracker.kpis() == compute_kpis(community, nodes, {'pv_bat': 20.0, 'factory_bat': 40.0})
+    assert tracker.kpis() == compute_kpis(community, nodes, {'pv_bat': 20.0, 'factory_bat': 40.0},
+                                          {'pv_bat': 2.0, 'factory_bat': 4.0})
 
 
 def test_tracker_records_per_node_rewards(mini_cer_v1_path: Path) -> None:

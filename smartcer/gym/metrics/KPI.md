@@ -45,8 +45,12 @@ Per battery node (`batteries.<node_id>`) and, for the totals, over U_b:
 | `discharge_kwh` | Σ_t p^dis_{u,t} ΔT, energy from the battery to the node | kWh |
 | `throughput_kwh` | Σ_t ΔT (η^cha_u p^cha_{u,t} + p^dis_{u,t} / η^dis_u), energy into and out of the cell | kWh |
 | `equivalent_full_cycles` | `throughput_kwh` / (2 S^max_u); total: Σ_u throughput / (2 Σ_u S^max_u) | – |
+| `efc_usable` | `throughput_kwh` / (2 (S^max_u − S^min_u)); total: Σ_u throughput / (2 Σ_u (S^max_u − S^min_u)) | – |
 
-One equivalent full cycle moves the nominal capacity into and out of the cell once.
+`equivalent_full_cycles` counts cycles of the nominal capacity: one moves S^max into and out of the
+cell once. `efc_usable` counts cycles of the usable capacity S^max − S^min, the energy the battery
+can actually cycle: a battery charged from S^min to S^max and back once a day makes one usable
+cycle per day, but only (S^max − S^min) / S^max nominal cycles. With S^min = 0 the two are equal.
 
 ## Constraint penalty
 

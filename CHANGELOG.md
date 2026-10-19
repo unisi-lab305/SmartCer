@@ -48,15 +48,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `info['obs_clipped']` in the reset and step info: the number of observation values clipped to
   [0, 1] because they lie outside the normaliser's training range
 - Baseline controllers in `smartcer.gym.controllers`: `NaiveController` (idle batteries) and
-  `RBCController` ([M24] Algorithm 1, computed in energy); `compute_baselines` runs them and writes
-  the community table, one table per node, the KPIs and the run configuration to an output
-  directory
+  `RBCController` ([M24] Algorithm 1, computed in energy within the dynamic bounds, so never
+  penalised) with two modes: `node` (each battery follows its own node; a producer's battery
+  discharges when its generation is 0) and `community` (the batteries follow the community balance,
+  pro rata to the energy each can take or deliver; the reference baseline); `compute_baselines`
+  runs them (default `naive` and `rbc_community`) and writes the community table, one table per
+  node, the KPIs and the run configuration to an output directory
 - Results tracking in `smartcer.gym.tracking`: `TrackResults` wrapper with a `ResultsTracker`
   (community and per-node tables, CSV export) and the Stable-Baselines3 `ResultsCallback`
 - KPIs in `smartcer.gym.metrics` (welfare and its components, shared energy, sharing and coverage
-  rates, imports, exports, battery throughput, equivalent full cycles, penalty statistics) and the
+  rates, imports, exports, battery throughput, equivalent full cycles on the nominal and on the
+  usable capacity, penalty statistics) and the
   Fit Score, documented in `smartcer/gym/metrics/KPI.md`
 - `SmartCerEnv.run_config()`, `SmartCerEnv.current_step` and `SmartCerEnv.scenario_path`
+- Step benchmark `benchmarks/bench_step.py` (`make bench`): whole-period episodes with random
+  actions, time per episode and per step
 
 ### Changed
 
@@ -108,6 +114,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 0.6.2 scenarios whose files have shifted timestamps (Leather) can be split with `start` and
   `end` anywhere: the period is selected on the first node's timestamps and every node is cut at
   the same rows; files with different numbers of rows raise `ValueError`
+- Speed (S13): one year of Leather (10 nodes, 4 batteries) with random actions takes 3.2 s
+  (364 µs per step) instead of 51-52 s with 0.6.2 on the same machine, 16 times faster (43 s in
+  the 0.6.2 measurement of the refactoring brief): CSV files are read once, a step reads
+  preloaded values without pandas, and the observation is built once per step from precomputed
+  static features
 
 ---
 

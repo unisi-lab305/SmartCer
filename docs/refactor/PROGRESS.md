@@ -784,3 +784,163 @@ phase, in the format of section 9 of the brief, newest last.
      (Section 13 is [M24] Algorithm 1, per node.)
 - Ready for phase 6: yes; the open questions do not block it (phase 6 is performance). The phase 5
   pull request is open and waits for your go-ahead to merge.
+
+- Pull request #7 merged by Leonardo after review (merge commit `4a72b38`).
+- Answers (2026-10-19), implemented in their own commit at the start of phase 6 (`02d0c4d`):
+  1. and 4. `RBCController` gets a `mode`:
+     - `node`: the section 13 rule plus a producer rule, under which a producer's battery
+       discharges when g = 0 (as in 0.6.2); for single-node use;
+     - `community`: balance B_t = Σ g − Σ l over all nodes. A surplus charges the batteries pro
+       rata to their charge headroom; a deficit discharges them pro rata to their available
+       discharge energy.
+
+     `community` is the class A reference baseline and the default of `compute_baselines`.
+     Produce both modes for Leather 2022 and extend FORMULATION section 13 with both. Do not
+     require the RBC to beat the naive controller: report welfare, shared energy and incentive
+     for the three controllers as they are.
+  2. The RBC uses the environment's dynamic bounds (cell limits with efficiencies and S^min), the
+     same ones applied to actions. Acceptance: zero penalised steps on Leather in both modes.
+  3. Keep equivalent full cycles on the nominal capacity; add `efc_usable` on S^max − S^min and
+     document both in KPI.md.
+
+## Phase 6 · Performance – 2026-10-19
+
+- Branch and commits: `refactor/v1-phase-6-performance`, created from `main` at `4a72b38`.
+  - `02d0c4d` feat(gym): add node and community RBC modes within the dynamic bounds and cycles on
+    usable capacity (the phase 5 answers, in their own commit)
+  - `9fe7b61` perf(gym): add the step benchmark and tests guarding the step performance rules
+  - this report
+- Done:
+  1. Phase 5 answers (`smartcer/gym/controllers/rbc.py`, `baselines.py`, `metrics/kpi.py`):
+     - `RBCController(env, mode='community')`, modes `node` and `community` (names `rbc_node`
+       and `rbc_community`). `CONTROLLERS` now maps a name to a factory taking the environment.
+       `compute_baselines` runs `naive` and `rbc_community` by default.
+     - Both modes work in energy (node side) within the dynamic bounds of section 6. Each
+       battery can take E^cha = A^upper P^cha Δt and deliver E^dis = A^lower P^dis Δt, read from
+       `node.get_bounds(t)`. The actions are float64, so an action equal to a bound is applied
+       exactly.
+     - `node`: d = g − l; charge min(d, E^cha), discharge min(−d, E^dis); a producer with g = 0
+       discharges E^dis.
+     - `community`: B_t over all nodes; every battery charges f · E^cha with
+       f = min(1, B_t / Σ E^cha), or discharges f · E^dis with f = min(1, −B_t / Σ E^dis).
+     - FORMULATION section 13 rewritten with both modes, the energies E^cha and E^dis, and the
+       statement that the RBC is not required to beat idle batteries.
+     - `efc_usable` = throughput / (2 (S^max − S^min)), per battery and in total, next to
+       `equivalent_full_cycles`. `compute_kpis` takes the S^min of each battery and the tracker
+       passes it. KPI.md explains both.
+     - Leather 2022 baselines for `naive`, `rbc_node` and `rbc_community` regenerated in
+       `results/baselines/leather_2022/` (gitignored, not committed).
+  2. `benchmarks/bench_step.py` (`make bench`): whole-period episodes of a scenario (default:
+     local Leather) with random actions drawn before the timed loop. It reports construction
+     time, reset time, time per episode and per step, and the speed-up against the 43 s of 0.6.2.
+  3. Step audit against item 2 of the brief. `step()` already met both rules, from the design of
+     phases 2-4, so no code change was needed:
+     - nodes read preloaded Python floats;
+     - `community.timestamps` is a numpy `datetime64` array;
+     - tracking runs in a wrapper, outside the environment;
+     - the observation is built once per step from precomputed static features.
+
+     `test/integration/gym/test_env_performance.py` now guards these rules:
+     - no Python-level pandas call during 24 steps with the extended preset, lookback, causal
+       timing and per-node rewards;
+     - exactly one `build` call per reset and per step;
+     - a smoke test of the benchmark script.
+  4. CLAUDE.md (status, commands, structure, performance rules, RBC and KPIs), CHANGELOG
+     (benchmark, RBC modes, `efc_usable`, the S13 speed figures) and the Makefile (`bench`).
+- Acceptance checks:
+  - Speed, measured on this laptop, Leather 2022: 10 nodes, 4 batteries, 8,760 steps, preset
+    `meco`, random actions. The two runs were back to back:
+    - 0.6.2 (tag `v0.6.2`): 51.0 s and 52.3 s per year (5.8–6.0 ms per step);
+    - 1.0, `python benchmarks/bench_step.py --episodes 5`: median 3.19 s per year (best 3.07 s),
+      364 µs per step.
+
+    | Comparison | Speed-up |
+    |---|---|
+    | 0.6.2 timed in the same session | **16×** |
+    | 43 s, the 0.6.2 figure in the brief | **13.5×** |
+
+    Required: 5×. The laptop's timings vary by up to a factor of 2 with its load. Across six
+    benchmark runs in this session, the median year ranged from 2.17 s to 4.30 s (248–491 µs per
+    step), 10× to 20× faster than 43 s. Other figures:
+    - preset `extended`: 3.84 s and 4.03 s;
+    - construction: 0.2–0.35 s (`meco`) and 1.0 s (`extended`, holiday calendar);
+    - reset: under 1 ms (0.6.2: 0.4–0.65 s, because it re-reads the CSV files).
+  - `test_env_performance.py`: no pandas code inside `step()`, one observation build per step,
+    benchmark smoke test → passed.
+  - RBC hand cases (`test_controllers.py`):
+    - S6: action 1.0, 30 kWh;
+    - headroom case (9 of 10 kWh, η = 0.9, surplus 3 kWh): 1.111 kWh, action 0.2222, battery
+      full;
+    - near S^min: action −A^lower exactly, no penalty;
+    - Δt = 0.25 h: action 0.8;
+    - producer with g = 0: discharges 1.62 kWh (action −0.324), exported;
+    - consumer: discharges 1 kWh;
+    - community, five steps on two batteries and a consumer: B = 6 → actions (0.4, 0.2);
+      B = −3 → (−0.2, −0.1); B = −10 → both empty; B = 25 → both at full power; B = 0 → idle.
+
+    No penalty in any case → passed.
+  - Synthetic scenario (`test_baselines.py`):
+    - `rbc_node`, hand values:
+      - pv_bat: charge 40 kWh, discharge 32.4 kWh, throughput 72 kWh, 1.8 cycles on S^max,
+        2.0 on S^max − S^min;
+      - factory_bat: charge 80 kWh, discharge 64.8 kWh, throughput 144 kWh;
+      - community: revenue 31.48 €, cost 91.76 €, shared energy 80.4 kWh.
+    - `rbc_community`: in every step, Σ charge = min(B⁺, Σ E^cha) and
+      Σ discharge = min(B⁻, Σ E^dis), with no penalty.
+
+    → passed.
+  - Zero penalised steps on Leather in both modes: `test_rbc_is_never_penalised_on_leather`
+    (local) gives `penalty_steps` 0 and `penalty_max` 0 for `node` and `community` → passed.
+  - Leather 2022, whole year:
+
+    | Controller | Welfare (€) | Δ vs naive | Shared energy (kWh) | Incentive (€) | Throughput (kWh) | Cycles (S^max / usable) | Penalised steps |
+    |---|---|---|---|---|---|---|---|
+    | naive | −138,473.18 | – | 582,962.8 | 28,345.97 | 0 | 0 / 0 | 0 |
+    | rbc_node | −139,770.92 | −1,297.74 (−0.94 %) | 577,158.4 | 27,633.98 | 109,237.4 | 188.3 / 209.3 | 0 |
+    | rbc_community | −135,233.69 | +3,239.48 (+2.34 %) | 627,270.2 | 30,464.00 | 102,492.8 | 176.7 / 196.3 | 0 |
+
+    - `rbc_community` shares 44,307 kWh more than naive (+7.6 %) and earns 2,118 € more
+      incentive.
+    - `rbc_node` shares 5,804 kWh less and loses 712 € of incentive. Its loss against naive
+      shrank from 2,050 € (phase 5) to 1,298 €, because producer batteries now discharge at
+      night and no action is clipped. `pv_storage` makes 365.0 usable cycles: it fills by day
+      and empties every night.
+  - `make test` → 245 passed in 200 s (8 new tests); `make test-coverage` → 96 %.
+  - CI run 39256404477 on `9fe7b61` → success:
+    - unit: 192 passed;
+    - integration: 45 passed, 8 skipped (local data absent);
+    - coverage: 96 %;
+    - the wheel imports every subpackage.
+- Deviations from the brief and why:
+  - Item 2 of phase 6 needed no change to `step()`; the work is the benchmark and the regression
+    tests. I tried one micro-optimisation: reading the `NodeStep` fields with one `attrgetter` in
+    the step info. It gave no measurable gain, so I reverted it.
+  - The benchmark draws the random actions before the timed loop. `action_space.sample()` takes
+    about half of the time of a naive loop (4.7 s against 2.2 s per year), so leaving it in would
+    not measure the environment. The benchmark reports the median of the episodes because of the
+    timing noise.
+  - To compare on the same machine, I ran 0.6.2 again from a temporary `v0.6.2` worktree in the
+    scratchpad, since removed. Only `reset` and `step` were called; its `save_results`, which
+    writes into `cer_data`, was not called, and nothing in `cer_data` changed.
+  - Phase 5 answers:
+    - "Available charge headroom" is read as E^cha, the energy the battery can take in the step:
+      power limit, charge cap, η^cha and S^max. With this reading the pro-rata split never
+      exceeds a battery's bounds, and the whole surplus is placed whenever Σ E^cha ≥ B_t. The
+      same applies to discharge with E^dis.
+    - The RBC returns float64 actions. A float32 action equal to a bound can exceed it by about
+      1e-8, which counts as a penalised step (tolerance 1e-9). The environment converts actions
+      to float64 anyway. `NaiveController` keeps float32.
+    - The registry name `rbc` became `rbc_node` and `rbc_community`. It was never released, so
+      there is no deprecation.
+    - The producer rule applies only to mode `node`: mode `community` does not look at node
+      types.
+    - Two phase 5 hand tests changed with answer 2:
+      - the headroom case now charges 1.111 kWh (the cell limit), not 1 kWh;
+      - the near-S^min case is no longer penalised.
+- Open questions for Leonardo:
+  1. With `charge_limit: production`, mode `community` can charge the battery of a prosumer
+     that is itself importing, from its own generation, when the community has a surplus. This
+     follows D6, but the node then imports more from the grid while its battery charges. With
+     `surplus` the battery could not charge. Is that acceptable for the class A baseline, or
+     should mode `community` charge only batteries whose node has a surplus?
+- Ready for phase 7: yes. The pull request is open and waits for your go-ahead to merge.

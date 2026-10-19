@@ -12,11 +12,12 @@ controls the batteries.
 
 **Status:** version 0.6.2 is being refactored into 1.0.0 following
 [docs/refactor/REFACTOR_v1.md](docs/refactor/REFACTOR_v1.md); progress, deviations and open
-questions are in [docs/refactor/PROGRESS.md](docs/refactor/PROGRESS.md). Phases 0-5 are complete:
+questions are in [docs/refactor/PROGRESS.md](docs/refactor/PROGRESS.md). Phases 0-6 are complete:
 the Gymnasium environment `SmartCer-v1` (`smartcer/gym/`, with its rewards, observation presets,
 baseline controllers, results tracking and KPIs) wraps the 1.0 physics and economics
 (`smartcer/core/`) and the scenario loader (`smartcer/data/`); all 0.6.2 modules were removed.
-Scenario and run arguments: [docs/CONFIG.md](docs/CONFIG.md).
+One year of Leather takes about 3 s (`make bench`). Scenario and run arguments:
+[docs/CONFIG.md](docs/CONFIG.md).
 
 **Authoritative formulation:** [docs/FORMULATION.md](docs/FORMULATION.md) defines the physics, the
 economics and the reward of SmartCer 1.0. It prevails over the code and over the papers. Do not
@@ -65,6 +66,8 @@ make test                   # all tests (unit + integration)
 make test-unit              # test/unit/ only
 make test-integration       # test/integration/ only
 make test-coverage          # coverage report (terminal, htmlcov/, coverage.xml)
+make bench                  # step benchmark: one year of the local Leather scenario, 3 episodes
+python benchmarks/bench_step.py --scenario <folder> --episodes 5 --observation extended
 make version                # check that pyproject.toml and smartcer/__init__.py agree
 make clean                  # remove caches, coverage and build files
 
@@ -234,7 +237,9 @@ SmartCer/
 │   ├── integration/data/           # mini_cer in both formats; Leather and the 0.6.2 reference
 │   └── integration/gym/            # check_env (Gymnasium, SB3), episodes, rewards, timing,
 │                                   # normaliser window and one year in the space, baselines,
-│                                   # SB3 results callback, SAC (slow)
+│                                   # SB3 results callback, performance rules and benchmark,
+│                                   # SAC (slow)
+├── benchmarks/                     # bench_step.py (time per step and per episode)
 ├── docs/                           # FORMULATION.md, CONFIG.md, refactor/REFACTOR_v1.md,
 │                                   # refactor/PROGRESS.md
 ├── .claude/commands/               # slash commands
@@ -242,7 +247,7 @@ SmartCer/
 ```
 
 Run outputs go to a folder chosen by the caller, e.g. `results/` (gitignored). The rest of the
-target 1.0 structure (forecasts, oracle, benchmarks) is in `docs/refactor/REFACTOR_v1.md` section
+target 1.0 structure (forecasts, oracle) is in `docs/refactor/REFACTOR_v1.md` section
 4; add it here only as it is created.
 
 ## Code Architecture
@@ -367,15 +372,22 @@ SmartCerEnv(scenario, start=None, end=None, episode_length=None, random_start=Fa
 
 **Action convention:** one action per battery in [-1, 1]; positive charges, negative discharges.
 
+**Performance rules** (phase 6, `test/integration/gym/test_env_performance.py`): no pandas code
+runs inside `step()` (nodes read preloaded Python floats, timestamps are a numpy array) and the
+observation is built once per step; measure changes with `benchmarks/bench_step.py`.
+
 ### Controllers, tracking and metrics, `smartcer/gym/controllers/`, `tracking/`, `metrics/`
 
 ```
 Controller(env)                     bound to the unwrapped SmartCerEnv; reads env.community
     - reset(); act(observation, info) → actions for env.current_step, in [-1, 1]
 ├── NaiveController ('naive')       zero actions
-└── RBCController ('rbc')           FORMULATION section 13 ([M24] Algorithm 1)
+└── RBCController(env, mode='community')   FORMULATION section 13 ([M24] Algorithm 1);
+                                    names 'rbc_node', 'rbc_community'
+CONTROLLERS                         read-only registry: name → factory taking the env
 run_episode(env, controller, seed) → ResultsTracker
-compute_baselines(env, output_dir, controllers=('naive', 'rbc'), seed=None) → {name: KPIs}
+compute_baselines(env, output_dir, controllers=('naive', 'rbc_community'), seed=None)
+    → {name: KPIs}
     writes <output_dir>/<name>/ (community.csv, nodes/<id>.csv, kpis.json, run_config.json) and
     <output_dir>/kpis.json; refuses the scenario folder and any cer_data folder (S18)
 TrackResults(env) wrapper → env.get_wrapper_attr('tracker'): ResultsTracker
@@ -383,18 +395,21 @@ TrackResults(env) wrapper → env.get_wrapper_attr('tracker'): ResultsTracker
       completed episode (only the current and the last completed episode are kept)
 ResultsCallback(output_dir, save_freq=1, run_config=None)   SB3, DummyVecEnv of TrackResults:
     logs KPIs under 'smartcer/<kpi>' at every completed episode, saves every save_freq episodes
-compute_kpis(community_table, node_tables, capacities) → dict      (formulas: metrics/KPI.md)
+compute_kpis(community_table, node_tables, capacities, soc_min) → dict   (formulas: KPI.md)
 fit_score(reference, candidate) → F (%), daily_welfare(community_table) → W per day
 ```
 
-- The RBC computes energies: d = g - l; charge min(d, S^max - s) or discharge min(-d, s - S^min),
-  divided by P Δt and limited to [-1, 1]; the environment clips it to the dynamic bounds with the
-  usual penalty. It reads g and l of step t from the scenario, as in [M24]. A producer never
-  discharges.
+- The RBC computes energies (node side) within the dynamic bounds (`node.get_bounds(t)`), so its
+  actions are never clipped or penalised; it returns float64 actions, applied exactly (a float32
+  equal to a bound may exceed it by 1e-8). Mode `node`: d = g - l, charge min(d, E^cha) or
+  discharge min(-d, E^dis); a producer with g = 0 discharges E^dis. Mode `community` (reference
+  baseline): balance B_t = Σ g - Σ l over all nodes, every battery charges (discharges) the same
+  fraction min(1, |B_t| / Σ E) of its E^cha (E^dis). It reads g and l of step t from the
+  scenario, as in [M24].
 - KPIs: welfare and its components, shared, exported and imported energy, sharing rate
   (shared / exported), coverage rate (shared / imported), battery charge, discharge, cell
-  throughput and equivalent full cycles (throughput / 2 S^max), penalty mean, max and steps
-  (> 1e-9). Rates are fractions.
+  throughput, equivalent full cycles on S^max (`equivalent_full_cycles`) and on S^max - S^min
+  (`efc_usable`), penalty mean, max and steps (> 1e-9). Rates are fractions.
 
 **Known defects** S1-S18 of 0.6.2 are listed in `docs/refactor/REFACTOR_v1.md` section 2; their
 regression tests on the new API are named `test_s<n>_*`. All 0.6.2 modules and their

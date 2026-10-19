@@ -1,6 +1,6 @@
 """
 Unit tests of the baseline controllers (`smartcer.gym.controllers`): the naive controller and the
-rule-based controller of docs/FORMULATION.md section 13, on hand cases.
+rule-based controller of docs/FORMULATION.md section 13 in its two modes, on hand cases.
 """
 
 from collections.abc import Callable
@@ -68,17 +68,18 @@ def prosumer_env(write_scenario: Callable[..., Path], rows: list[tuple[float, fl
     return SmartCerEnv(folder)
 
 
-def run(env: SmartCerEnv) -> list[dict[str, Any]]:
+def run(env: SmartCerEnv, mode: str = 'node') -> list[dict[str, Any]]:
     """
     One episode with the rule-based controller.
 
     Args:
-        env: Environment.
+        env: Environment with the battery node `bat`.
+        mode: RBC mode.
 
     Returns:
-        list[dict[str, Any]]: Per step, the actions chosen and the node info of the step.
+        list[dict[str, Any]]: Per step, the action chosen and the node info of the step.
     """
-    controller = RBCController(env)
+    controller = RBCController(env, mode=mode)
     obs, info = env.reset(seed=0)
     steps, done = [], False
     while not done:
@@ -106,8 +107,8 @@ def test_naive_controller_returns_zero_actions(mini_cer_v1_path: Path) -> None:
 def test_s6_rbc_executes_intended_energy(write_scenario: Callable[..., Path]) -> None:
     """
     Test the 0.6.2 defect S6 case: surplus 40 kWh, 30 kW, 100 kWh, battery at S^min 10 kWh. The
-    intended charge is min(40, 90) = 40 kWh, i.e. action 40 / 30 limited to 1, which executes
-    30 kWh (0.6.2: action 0.3, 9 kWh).
+    intended charge is 40 kWh, i.e. action 40 / 30 limited by A^upper = 1, which executes 30 kWh
+    (0.6.2: action 0.3, 9 kWh).
 
     Args:
         write_scenario: Scenario factory.
@@ -123,20 +124,19 @@ def test_s6_rbc_executes_intended_energy(write_scenario: Callable[..., Path]) ->
 
 def test_rbc_charges_surplus_and_discharges_deficit(write_scenario: Callable[..., Path]) -> None:
     """
-    Test section 13 on a prosumer with 10 kWh, 5 kW, η = 0.9, S^min = 0, Δt = 1 h:
+    Test mode `node` on a prosumer with 10 kWh, 5 kW, η = 0.9, S^min = 0, Δt = 1 h:
 
     - surplus 3 kWh, empty battery: action 3 / 5 = 0.6, 3 kWh charged, state of charge 2.7 kWh;
     - deficit 2 kWh: action -2 / 5 = -0.4, 2 kWh to the node, no import, state of charge
       2.7 - 2 / 0.9 = 0.478 kWh;
-    - deficit 2 kWh: the rule asks min(2, 0.478) = 0.478 kWh (action -0.0956) on the node side,
-      but the cell can deliver only η · 0.478 = 0.430 kWh: the environment clips the action to
-      -A^lower = -0.0860 with penalty k = 0.0096, as for any other action.
+    - deficit 2 kWh: the cell can deliver only η · 0.478 = 0.430 kWh to the node, so the action
+      is -A^lower = -0.0860 and the battery ends empty, without penalty.
 
     Args:
         write_scenario: Scenario factory.
     """
     env = prosumer_env(write_scenario, [(3.0, 0.0), (0.0, 2.0), (0.0, 2.0)], storage(10, 5))
-    charge, discharge, clipped = run(env)
+    charge, discharge, last = run(env)
 
     assert charge['action'] == pytest.approx(0.6)
     assert charge['charge_kwh'] == pytest.approx(3.0)
@@ -147,38 +147,40 @@ def test_rbc_charges_surplus_and_discharges_deficit(write_scenario: Callable[...
     assert discharge['import_kwh'] == pytest.approx(0.0)
     soc = 2.7 - 2.0 / 0.9
     assert discharge['soc_kwh'] == pytest.approx(soc)
-    assert clipped['action'] == pytest.approx(-soc / 5, rel=1e-6)
-    assert clipped['action_applied'] == pytest.approx(-0.9 * soc / 5, rel=1e-6)
-    assert clipped['penalty'] == pytest.approx(0.1 * soc / 5, rel=1e-6)
-    assert clipped['soc_kwh'] == pytest.approx(0.0, abs=1e-9)
+    assert last['action'] == pytest.approx(-0.9 * soc / 5, rel=1e-6)
+    assert last['discharge_kwh'] == pytest.approx(0.9 * soc, rel=1e-6)
+    assert last['soc_kwh'] == pytest.approx(0.0, abs=1e-6)
+    assert [step['penalty'] for step in (charge, discharge, last)] == [0.0, 0.0, 0.0]
 
 
 def test_rbc_respects_headroom_and_time_step(write_scenario: Callable[..., Path]) -> None:
     """
-    Test the headroom S^max - s (battery at 9 of 10 kWh, surplus 3 kWh: 1 kWh, action 0.2) and a
-    15-minute step (surplus 1 kWh with 5 kW: action 1 / (5 · 0.25) = 0.8).
+    Test the headroom of the dynamic bounds (battery at 9 of 10 kWh with η = 0.9, surplus 3 kWh:
+    the node can supply (10 - 9) / 0.9 = 1.111 kWh, action 0.2222, the battery ends full) and a
+    15-minute step (surplus 1 kWh with 5 kW: action 1 / (5 · 0.25) = 0.8, equal to A^upper).
 
     Args:
         write_scenario: Scenario factory.
     """
     full = prosumer_env(write_scenario, [(3.0, 0.0)], storage(10, 5, soc_initial=0.9))
     step, = run(full)
-    assert step['action'] == pytest.approx(0.2)
-    assert step['charge_kwh'] == pytest.approx(1.0)
-    assert step['soc_kwh'] == pytest.approx(9.9)
+    assert step['action'] == pytest.approx(1.0 / 0.9 / 5, rel=1e-6)
+    assert step['charge_kwh'] == pytest.approx(1.0 / 0.9, rel=1e-6)
+    assert step['soc_kwh'] == pytest.approx(10.0)
     assert step['penalty'] == 0.0
 
     quarter = prosumer_env(write_scenario, [(1.0, 0.0)], storage(10, 5), delta_t=0.25)
     step, = run(quarter)
     assert step['action'] == pytest.approx(0.8)
     assert step['charge_kwh'] == pytest.approx(1.0)
+    assert step['penalty'] == 0.0
 
 
-def test_rbc_producer_never_discharges_and_consumer_never_charges(
-        write_scenario: Callable[..., Path]) -> None:
+def test_rbc_node_mode_producer_and_consumer(write_scenario: Callable[..., Path]) -> None:
     """
-    Test the node types: a producer has d = g ≥ 0, so it charges by day and stays idle at night;
-    a consumer has d = -l < 0, so it only discharges.
+    Test the node types in mode `node`: a producer charges with its generation by day (2 kWh,
+    action 0.4, 1.8 kWh in the cell) and, with g = 0, discharges all it can (η · 1.8 = 1.62 kWh,
+    action -0.324, exported); a consumer has d = -l < 0, so it only discharges.
 
     Args:
         write_scenario: Scenario factory.
@@ -187,7 +189,11 @@ def test_rbc_producer_never_discharges_and_consumer_never_charges(
                             node_type='producer')
     day, night = run(producer)
     assert day['action'] == pytest.approx(0.4)
-    assert night['action'] == 0.0
+    assert night['action'] == pytest.approx(-0.324)
+    assert night['discharge_kwh'] == pytest.approx(1.62)
+    assert night['export_kwh'] == pytest.approx(1.62)
+    assert night['soc_kwh'] == pytest.approx(0.0, abs=1e-6)
+    assert night['penalty'] == 0.0
 
     consumer = prosumer_env(write_scenario, [(0.0, 1.0)], storage(10, 5, soc_initial=0.5),
                             node_type='consumer')
@@ -195,6 +201,61 @@ def test_rbc_producer_never_discharges_and_consumer_never_charges(
     assert step['action'] == pytest.approx(-0.2)
     assert step['discharge_kwh'] == pytest.approx(1.0)
     assert step['import_kwh'] == pytest.approx(0.0)
+
+
+def test_rbc_community_mode_splits_the_balance(write_scenario: Callable[..., Path]) -> None:
+    """
+    Test mode `community` on a prosumer `a` (10 kWh, 10 kW), a producer `b` (20 kWh, 10 kW), both
+    with η = 1 and S^min = 0, and a consumer `c` without battery. Per step (g_a, l_a, g_b, l_c):
+
+    - (8, 2, 4, 4): B = 6; a can take min(10, 8, 10) = 8 kWh, b min(10, 4, 20) = 4: both charge
+      6 / 12 = half of it, 4 and 2 kWh (actions 0.4, 0.2);
+    - (0, 1, 0, 2): B = -3; a can deliver 4, b 2: both discharge half, 2 and 1 kWh;
+    - (0, 0, 0, 10): B = -10 > 3 available: both empty (actions -0.2, -0.1);
+    - (20, 0, 10, 5): B = 25 > 20 available: both charge at full power;
+    - (5, 5, 0, 0): B = 0: idle.
+
+    Args:
+        write_scenario: Scenario factory.
+    """
+    rows = [(8, 2, 4, 4), (0, 1, 0, 2), (0, 0, 0, 10), (20, 0, 10, 5), (5, 5, 0, 0)]
+    stamps = [f'2022-01-03 {i:02d}:00:00' for i in range(len(rows))]
+    files = {
+        'a.csv': [f'{d},{g},{l},0.1,0.3' for d, (g, l, _, _) in zip(stamps, rows)],
+        'b.csv': [f'{d},{g},0,0.1,0.3' for d, (_, _, g, _) in zip(stamps, rows)],
+        'c.csv': [f'{d},0,{l},0.1,0.3' for d, (_, _, _, l) in zip(stamps, rows)],
+    }
+    nodes = {'a': {'type': 'prosumer', 'csv': 'a.csv', 'storage': storage(10, 10, 1.0)},
+             'b': {'type': 'producer', 'csv': 'b.csv', 'storage': storage(20, 10, 1.0)},
+             'c': {'type': 'consumer', 'csv': 'c.csv'}}
+    folder = write_scenario(nodes, {name: '\n'.join([HEADER, *lines]) + '\n'
+                                    for name, lines in files.items()})
+    env = SmartCerEnv(folder)
+    controller = RBCController(env)
+    obs, info = env.reset(seed=0)
+    actions, penalties, done = [], [], False
+    while not done:
+        action = controller.act(obs, info)
+        obs, _, _, done, info = env.step(action)
+        actions.append(action.tolist())
+        penalties.append(info['penalty'])
+
+    assert controller.mode == 'community' and controller.name == 'rbc_community'
+    assert np.allclose(actions, [[0.4, 0.2], [-0.2, -0.1], [-0.2, -0.1], [1.0, 1.0], [0.0, 0.0]])
+    assert penalties == [0.0] * len(rows)
+
+
+def test_rbc_mode_is_checked(mini_cer_v1_path: Path) -> None:
+    """
+    Test the mode argument: the controller name follows it, and an unknown mode raises.
+
+    Args:
+        mini_cer_v1_path: Path of the 1.0-format synthetic scenario.
+    """
+    env = SmartCerEnv(mini_cer_v1_path)
+    assert RBCController(env, mode='node').name == 'rbc_node'
+    with pytest.raises(ValueError, match="unknown RBC mode 'global'"):
+        RBCController(env, mode='global')  # type: ignore[arg-type]
 
 
 def test_controllers_check_their_environment(mini_cer_v1_path: Path) -> None:
