@@ -222,3 +222,99 @@ phase, in the format of section 9 of the brief, newest last.
   on actions outside [−1, 1] or non-finite; in phase 3 the environment clips actions to the
   `Box(−1, 1)` space before the nodes, without penalty for that clip, and raises on non-finite
   actions.
+- Phase 1 pull request #3 merged into `main` (merge commit `4c2e0be`), CI of the pull request
+  green.
+
+## Phase 2 · Nodes, community and loader – 2026-10-19
+
+- Branch and commits: `refactor/v1-phase-2-nodes-community-loader`, created from `main` at
+  `4c2e0be` (phases 0 and 1 merged), pushed to `origin` for CI; no pull request.
+  - `8af6bf1` feat(core): add nodes, community shared energy, incentives and welfare
+  - `6d3d792` feat(data): add scenario schema and loader for the 1.0 and 0.6.2 formats
+  - `c0d0742` test: add node, community and loader tests and the 1.0-format synthetic scenario
+  - `2516dcb` ci: import the core and data subpackages from the installed wheel
+  - docs(refactor): add phase 2 progress report (this section)
+- Done:
+  1. `smartcer/core/nodes/node.py`: one `Node` class for producer, consumer and prosumer, optional
+     battery, per-step arrays (generation, load, sell and buy price, in kWh and €/kWh) validated
+     once and read as Python floats in `step()`; `charge_cap(t)` by `charge_limit` (D6:
+     `production` c = g, `surplus` c = max(0, g − l)); `get_bounds(t)`; `step(t, action)` →
+     `NodeStep` with g, l, p^cha, p^dis, node-side energies, n, e^gri, i^gri, revenue, cost,
+     throughput, storage cost, k, SoC, requested and applied action, bounds; `reset()` restores the
+     battery only (no file is re-read, S13).
+  2. `smartcer/core/community/`: pure functions `shared_energy`, `tip_coefficient` (vectorised,
+     ValueError for PNRR outside [0, 40]), `uniform_incentive`, `tip_incentive`,
+     `welfare_breakdown`; models `UniformIncentive` (constant or per-step π^inc) and `TipIncentive`
+     (per-step, per-node coefficients, `potential()`); `Community` with `step(t, actions)` →
+     `CommunityStep` (node records, `WelfareBreakdown`, K_t), the object the phase 3 environment
+     will wrap.
+  3. `smartcer/data/schema.py` and `loader.py`: `load_scenario(path, start, end)` → `Community` for
+     the 1.0 format (section 6 of the brief) and the 0.6.2 format (DeprecationWarning listing unused
+     keys; incentive `tip`; storage keys mapped by `Battery.from_config`; `_N` rule). Every CSV is
+     read once; aliases `price_exp`/`price_imp`; `units: kW` multiplied by Δt. Errors name node,
+     file, column and first offending CSV line with its timestamp: missing columns, missing or
+     non-numeric values, negative energies, unsorted, duplicated or wrongly spaced timestamps,
+     nodes with different timestamps (1.0), different row counts (both formats).
+  4. 0.6.2 timestamps (answer of 2026-10-19 to the question raised during the phase): rows aligned
+     by position as in 0.6.2, community timestamps of the first node, irregularities reported in
+     one `TimestampWarning`. Needed by Leather: `cartotecnica`, `conceria_dolmen`,
+     `toscana_fridge` (and `cer_azienda/azienda`) have labels shifted by +1 h for 5,209 rows (gap
+     at 2022-03-27 23:00, duplicate 2022-10-31 00:00), while the other nodes are regular.
+  5. `test/fixtures/mini_cer_v1/`: the synthetic scenario in the 1.0 format (explicit `csv` paths,
+     1.0 column names and storage keys, `tip` model).
+  6. `docs/CONFIG.md` (scenario reference; run arguments limited to the period until phase 3);
+     `CLAUDE.md` and `CHANGELOG.md` updated; the CI wheel check also imports `smartcer.core` and
+     `smartcer.data`.
+  7. Regression tests: S5 (`test_s5_*` in `test/unit/core/nodes/test_node.py` and
+     `test/unit/data/test_loader.py`: Δt = 0.25 h, `units: kW`), S8
+     (`test_s8_consumer_battery_cannot_charge`, `test_consumer_with_battery_loads_and_steps`),
+     S11 and S14 (layer-rule test over the new modules: no `sys.exit`, no `print`; raw-string
+     regex for the `_N` rule).
+- Acceptance checks:
+  - Phase 0 characterisation tests re-pointed to the new functions, `tip` model
+    (`test/integration/data/test_mini_cer_scenario.py`,
+    `test/unit/core/community/test_incentives.py`): idle steps t = 0, 10, 16, 34 (flows per node,
+    shared 0/3/0/3 kWh, TIP 0/0.2925/0/0.27 €), shared and TIP identities over 48 h, per-node
+    energy balance over a random run, the 5 TIP coefficient hand cases → passed.
+  - Leather 2022, idle batteries, against the 0.6.2 reference (`test_leather_reference.py`) →
+    passed: all seven hourly community series (imported, exported, shared, expense, revenue,
+    potential and actual TIP) within 1.2e-13 (tolerance 1e-6), annual sums identical (difference
+    0.0), timestamps identical. Annual idle welfare −138,473.18 €.
+  - Welfare of the synthetic scenario by hand, both models (10:00 of day 1): idle W = 1.5925 €
+    (`tip`) and 1.6 € (`uniform`, 0.1 €/kWh); with actions (pv_bat −0.5 at S^min, factory_bat
+    +0.5) W = 1.125 € and 1.1 €, K_t = 0.25 → passed.
+  - 1.0 format vs 0.6.2 format: identical `CommunityStep` records at every step of a random 48 h
+    run → passed.
+  - Consumer with a battery loads and steps; a full charge is clipped to 0 with k = 1, discharge
+    works → passed.
+  - `make test` → 139 passed, 16 xfailed in 19 s (75 new tests); `make test-coverage` → 82 %
+    overall, new modules 90-100 %.
+  - CI on the branch → green, run 39222440322 on `c0d0742`: unit 119 passed, 5 xfailed;
+    integration 16 passed, 4 skipped (no local data in CI), 11 xfailed; wheel import OK.
+  - Informative: every local scenario (Leather, cer_azienda, cer_coffee, cer_retail, cer_utente)
+    loads; Leather loads in 0.5 s and an idle year takes 3.5 s (405 µs per step; 0.6.2: 43 s).
+- Deviations from the brief and why:
+  - One `Node` class with a `node_type` in `smartcer/core/nodes/node.py` (the brief allows "one
+    class with a type"; the file name follows the content).
+  - `smartcer/core/community/community.py` (`Community`, `CommunityStep`) is not in the brief's
+    file list: it steps the nodes and combines shared energy, incentive, welfare and K_t, so that
+    phase 2 can be tested on full runs and phase 3 only wraps it.
+  - CSV reading and its time-step validation are in `smartcer/data/loader.py`, not in the node
+    (storage-node-environment reads the CSV in the node): `smartcer/core/` stays free of pandas.
+  - Lenient timestamps for the 0.6.2 format, as decided during the phase (see item 4).
+  - Additional validation: negative `production` or `consumption` and non-numeric values are
+    errors; unknown keys are errors in the 1.0 format and are listed in the DeprecationWarning in
+    the 0.6.2 format.
+  - The mapping of the 0.6.2 run keys (`simulation.*`, `reward.*`) is left to phase 3, where the run
+    configuration (environment arguments) is created; the loader takes `start` and `end` only.
+- Open questions for Leonardo:
+  1. Prices a node type does not require are set to 0: the energy a consumer's battery exports
+     (discharge beyond its load) earns nothing, and a producer's buy price is 0 (it never imports
+     under the charge rule). Accept, or read `sell_price` for consumers when the column exists?
+  2. `tip` model: the shared fraction E^sh / Σ e^gri uses the export of all nodes, and nodes without
+     a plant have c = 0 (as 0.6.2, where only producers and prosumers exported). With the other
+     reading (sum over plant nodes only) a consumer battery's export would raise the incentive of
+     the plants. Keep the current reading? FORMULATION section 9 could state it explicitly.
+  3. The shifted Leather timestamps (item 4): do you want to correct the CSVs (I never modify
+     `cer_data/`)? A 1.0 conversion of Leather needs regular timestamps.
+- Ready for phase 3: yes; the open questions do not block it.
