@@ -119,17 +119,21 @@ $$
 I_t = \pi^{inc}_t\, E^{sh}_t
 $$
 
-- `tip` (the 0.6.2 per-plant model, default for scenarios in the 0.6.2 format). For every exporting node i with a `photovoltaic` section:
+- `tip` (the 0.6.2 per-plant model, default for scenarios in the 0.6.2 format). Every node u with a `photovoltaic` section has the coefficient
 
 $$
-c_{i,t} = \Big( \min\big(TIP^{th}_i,\ TIP^{base}_i + \max(0,\ 0.180 - P^z_{i,t})\big) + f^{zone}_i \Big) \Big( 1 - 0.5\, \frac{PNRR_i}{40} \Big)
+c_{u,t} = \Big( \min\big(TIP^{th}_u,\ TIP^{base}_u + \max(0,\ 0.180 - P^z_{u,t})\big) + f^{zone}_u \Big) \Big( 1 - 0.5\, \frac{PNRR_u}{40} \Big)
 $$
 
+  and every node without one (consumers, and any node without a plant) has c_{u,t} = 0. The incentive is
+
 $$
-I_t = \frac{E^{sh}_t}{\sum_i e^{gri}_{i,t}} \sum_i c_{i,t}\, e^{gri}_{i,t} \qquad (I_t = 0 \text{ if } \textstyle\sum_i e^{gri}_{i,t} = 0)
+I_t = \frac{E^{sh}_t}{\sum_u e^{gri}_{u,t}} \sum_u c_{u,t}\, e^{gri}_{u,t} \qquad (I_t = 0 \text{ if } \textstyle\sum_u e^{gri}_{u,t} = 0)
 $$
 
-  with P^z_{i,t} approximated by the node's sell price π^egr_{i,t}, PNRR_i ≤ 40 (percentage of capital grant), TIP^base_i, TIP^th_i, f^zone_i in €/kWh from `photovoltaic` (`tip_base`, `tip_threshold`, `fi_zone`, `pnrr`). With equal coefficients c_{i,t} = π^inc_t the two models coincide.
+  where both sums run over all nodes, as in 0.6.2: the shared energy is valued at the export-weighted average coefficient of all exported energy. Energy exported by the battery of a node without a plant enters the denominator with c = 0, so it lowers the average coefficient (and the incentive per kWh shared).
+
+  P^z_{u,t} is approximated by the node's sell price π^egr_{u,t}; PNRR_u ≤ 40 (percentage of capital grant); TIP^base_u, TIP^th_u, f^zone_u in €/kWh from `photovoltaic` (`tip_base`, `tip_threshold`, `fi_zone`, `pnrr`). With equal coefficients c_{u,t} = π^inc_t for every exporting node the two models coincide.
 
 ## 10. Social welfare
 
