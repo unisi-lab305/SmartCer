@@ -42,8 +42,9 @@ def test_replay_of_a_synthetic_oracle_trajectory(mini_cer_v1_path: Path, synthet
 
     result = check_replay(env, output)
 
-    assert (np.count_nonzero(env.oracle.actions > 0), np.count_nonzero(env.oracle.actions < 0)) \
-        > (10, 10)
+    # the trajectory charges and discharges: 14 and 44 of the 96 actions
+    assert np.count_nonzero(env.oracle.actions > 0) > 10
+    assert np.count_nonzero(env.oracle.actions < 0) > 10
     assert result.passed
     assert result.steps == 48
     assert result.penalty_steps == 0 and result.penalty_max <= 1e-9
