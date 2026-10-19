@@ -247,4 +247,31 @@ on the whole period.
 With `single_agent: true` the per-node rewards are in `info['reward']['nodes']` and the scalar
 reward is their sum (0.6.2 returned a list). Other reward types raise `ValueError`.
 
-Forecast and oracle providers and the output directory are added in later phases.
+### Output directory
+
+Runs are written to an output directory chosen by the caller (e.g. `results/`, gitignored), never
+into the scenario folder or a `cer_data` folder (`ValueError`; 0.6.2 wrote into
+`cer_data/<scenario>/simulations/`):
+
+```python
+from smartcer.gym import SmartCerEnv
+from smartcer.gym.controllers import compute_baselines
+
+env = SmartCerEnv('path/to/scenario', start='2022-01-01', end='2022-12-31 23:00')
+kpis = compute_baselines(env, 'results/baselines/my_run', seed=0)   # controllers 'naive', 'rbc'
+```
+
+| File | Content |
+|---|---|
+| `<controller>/community.csv` | one row per step: `datetime`, `episode`, `t`, `reward`, `reward_main`, `reward_penalty`, `welfare`, `revenue`, `cost`, `storage_cost`, `incentive`, `shared_energy_kwh`, `export_kwh`, `import_kwh`, `penalty` (K_t), `obs_clipped` |
+| `<controller>/nodes/<node>.csv` | one row per step: `datetime`, `episode`, `t` and the node's flows, economics, state of charge, requested and applied action, bounds, k (and the node reward with `reward_per_node`) |
+| `<controller>/kpis.json` | KPIs of the episode (`smartcer/gym/metrics/KPI.md`) |
+| `<controller>/run_config.json` | `env.run_config()`: version, scenario, period, episode, observation and reward settings, controller |
+| `kpis.json` | KPIs of every controller |
+
+The same tables come from any run through the `TrackResults` wrapper
+(`env.get_wrapper_attr('tracker').save(folder, env.unwrapped.run_config())`) and, during
+Stable-Baselines3 training, from `ResultsCallback(output_dir, save_freq)`, which also logs the KPIs
+of each episode under `smartcer/`.
+
+Forecast and oracle providers are added in phase 7.
