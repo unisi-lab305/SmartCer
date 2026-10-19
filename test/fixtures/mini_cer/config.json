@@ -1,0 +1,60 @@
+{
+  "Producers": {
+    "pv_bat": {
+      "Type": "plant",
+      "Photovoltaic": {
+        "pv_power": 20,
+        "pnrr": 0.0,
+        "tip_base": 0.08,
+        "tip_threshold": 0.12,
+        "fi_zone": 0.01,
+        "pz": "CNOR"
+      },
+      "Storage": {
+        "capacity": 20,
+        "rated_power": 5,
+        "soc_min": 0.1,
+        "efficiency": 0.9,
+        "alfa": 0.0,
+        "beta": 0.0
+      }
+    }
+  },
+  "Consumers": {
+    "house_1": {
+      "Type": "retail"
+    }
+  },
+  "Prosumers": {
+    "factory_bat": {
+      "Type": "factory",
+      "Photovoltaic": {
+        "pv_power": 40,
+        "pnrr": 40.0,
+        "tip_base": 0.08,
+        "tip_threshold": 0.12,
+        "fi_zone": 0.01,
+        "pz": "CNOR"
+      },
+      "Storage": {
+        "capacity": 40,
+        "rated_power": 10,
+        "soc_min": 0.1,
+        "efficiency": 0.9,
+        "alfa": 0.0,
+        "beta": 0.0
+      }
+    },
+    "shop": {
+      "Type": "retail",
+      "Photovoltaic": {
+        "pv_power": 10,
+        "pnrr": 20.0,
+        "tip_base": 0.08,
+        "tip_threshold": 0.12,
+        "fi_zone": 0.01,
+        "pz": "CNOR"
+      }
+    }
+  }
+}

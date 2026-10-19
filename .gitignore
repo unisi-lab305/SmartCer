@@ -1,5 +1,7 @@
 # Data
 cer_data/
+# local reference values derived from cer_data (scripts/make_reference_v062.py)
+test/fixtures/local/
 
 # Notebooks
 *.ipynb
