@@ -258,7 +258,7 @@ from smartcer.gym import SmartCerEnv
 from smartcer.gym.controllers import compute_baselines
 
 env = SmartCerEnv('path/to/scenario', start='2022-01-01', end='2022-12-31 23:00')
-kpis = compute_baselines(env, 'results/baselines/my_run', seed=0)   # controllers 'naive', 'rbc'
+kpis = compute_baselines(env, 'results/baselines/my_run', seed=0)   # 'naive', 'rbc_community'
 ```
 
 | File | Content |

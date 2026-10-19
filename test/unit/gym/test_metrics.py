@@ -100,12 +100,13 @@ def test_kpis_hand_values() -> None:
     """
     Test the KPIs of the two-step tables: sums, rates (4 / 10 and 4 / 10), equivalent full cycles
     (battery a: 10 kWh through a 10 kWh cell = 0.5 cycles; b: 4 kWh through 20 kWh = 0.1; total
-    14 / 60) and penalty statistics.
+    14 / 60), cycles on the usable capacity (a: S^min 2 kWh, 10 / 16; b: S^min 0, 0.1; total
+    14 / 56) and penalty statistics.
     """
     nodes = {'a': node_table([6.0, 4.0], [0.0, 0.3]), 'b': node_table([4.0, 0.0], [0.0, 0.0]),
              'c': pd.DataFrame({'penalty': [0.0, 0.0]})}
 
-    kpis = compute_kpis(community_table(), nodes, {'a': 10.0, 'b': 20.0})
+    kpis = compute_kpis(community_table(), nodes, {'a': 10.0, 'b': 20.0}, {'a': 2.0})
 
     assert kpis['steps'] == 2
     assert kpis['welfare'] == pytest.approx(0.5)
@@ -117,15 +118,18 @@ def test_kpis_hand_values() -> None:
     assert kpis['coverage_rate'] == pytest.approx(0.4)
     assert kpis['throughput_kwh'] == pytest.approx(14.0)
     assert kpis['equivalent_full_cycles'] == pytest.approx(14.0 / 60.0)
+    assert kpis['efc_usable'] == pytest.approx(14.0 / 56.0)
     assert kpis['penalty_mean'] == pytest.approx(0.075)
     assert kpis['penalty_max'] == pytest.approx(0.15)
     assert kpis['penalty_steps'] == 1
     assert kpis['batteries']['a'] == {
         'charge_kwh': 6.0, 'discharge_kwh': 4.0, 'throughput_kwh': 10.0,
-        'equivalent_full_cycles': 0.5, 'penalty_mean': pytest.approx(0.15),
+        'equivalent_full_cycles': 0.5, 'efc_usable': pytest.approx(10.0 / 16.0),
+        'penalty_mean': pytest.approx(0.15),
         'penalty_max': pytest.approx(0.3), 'penalty_steps': 1,
     }
     assert kpis['batteries']['b']['equivalent_full_cycles'] == pytest.approx(0.1)
+    assert kpis['batteries']['b']['efc_usable'] == pytest.approx(0.1)
     assert set(kpis['batteries']) == {'a', 'b'}
 
 
@@ -139,14 +143,15 @@ def test_s12_rates_are_named_after_what_they_measure() -> None:
     kpis = compute_kpis(table, {}, {})
 
     assert kpis['sharing_rate'] == 0.0 and kpis['coverage_rate'] == 0.0
-    assert kpis['equivalent_full_cycles'] == 0.0
+    assert kpis['equivalent_full_cycles'] == 0.0 and kpis['efc_usable'] == 0.0
     for name in ('self_consumption', 'net_metering', 'energy_balance', 'tip_potential'):
         assert name not in kpis
 
 
 def test_kpis_invalid_input_raises() -> None:
     """
-    Test the errors: missing community column, missing battery table or column, capacity ≤ 0.
+    Test the errors: missing community column, missing battery table or column, capacity ≤ 0,
+    minimum state of charge outside [0, S^max).
     """
     nodes = {'a': node_table([1.0, 1.0], [0.0, 0.0])}
     with pytest.raises(ValueError, match=r"missing columns \['penalty'\]"):
@@ -157,3 +162,5 @@ def test_kpis_invalid_input_raises() -> None:
         compute_kpis(community_table(), {'a': nodes['a'].drop(columns='charge_kwh')}, {'a': 10.0})
     with pytest.raises(ValueError, match='capacity must be > 0'):
         compute_kpis(community_table(), nodes, {'a': 0.0})
+    with pytest.raises(ValueError, match=r'minimum state of charge must be in \[0, 10.0\)'):
+        compute_kpis(community_table(), nodes, {'a': 10.0}, {'a': 10.0})

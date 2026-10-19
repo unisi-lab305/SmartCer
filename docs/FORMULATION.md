@@ -180,12 +180,24 @@ Forecasts, when added, cover steps t + 1 … t + H with `True` and t … t + H �
 
 ## 13. Baseline controller and comparison metric
 
-**Rule-based controller** ([M24] Algorithm 1), computed in energy and converted to an action:
+**Rule-based controller** ([M24] Algorithm 1), computed in energy (node side) and converted to an action. It reads g and l of step t. The energies a battery can take and deliver in step t are those of the dynamic bounds of section 6 (power limits, charge cap, efficiencies, S^min, S^max, self-discharge):
 
-- d = g_{u,t} − l_{u,t};
-- if d ≥ 0: charge energy min(d, S^max_u − s_{u,t-1}), action = energy / (P^cha_u ΔT);
-- otherwise: discharge energy min(−d, s_{u,t-1} − S^min_u), action = −energy / (P^dis_u ΔT);
-- the action is then clipped to [−A^lower_{u,t}, A^upper_{u,t}] as any other action.
+$$
+E^{cha}_{u,t} = A^{upper}_{u,t}\, P^{cha}_u\, \Delta T, \qquad E^{dis}_{u,t} = A^{lower}_{u,t}\, P^{dis}_u\, \Delta T
+$$
+
+A charge energy x gives the action x / (P^cha_u ΔT), a discharge energy x the action −x / (P^dis_u ΔT). Every action lies in [−A^lower_{u,t}, A^upper_{u,t}], so the controller is never clipped or penalised (K_t = 0). Two modes:
+
+- **`node`** (each battery follows its own node; intended for single-node use), with d = g_{u,t} − l_{u,t}:
+  - if u is a producer and g_{u,t} = 0: discharge E^dis_{u,t} (rule of 0.6.2; with d = g a producer would never discharge);
+  - otherwise, if d ≥ 0: charge min(d, E^cha_{u,t});
+  - otherwise: discharge min(−d, E^dis_{u,t}).
+- **`community`** (the batteries follow the community balance; class A reference baseline), with B_t = Σ_{u ∈ U} g_{u,t} − Σ_{u ∈ U} l_{u,t} over all nodes:
+  - if B_t > 0: every battery charges f E^cha_{u,t} with f = min(1, B_t / Σ_{v ∈ U_b} E^cha_{v,t}), that is min(B_t, Σ E^cha) split pro rata to E^cha;
+  - if B_t < 0: every battery discharges f E^dis_{u,t} with f = min(1, −B_t / Σ_{v ∈ U_b} E^dis_{v,t});
+  - if B_t = 0, or the sum is 0: idle.
+
+The rule-based controller is a reference, not a lower bound: it is not required to beat idle batteries.
 
 **Fit Score** ([M24] eq. 11) between the daily welfare series of a reference T1 (the MILP oracle) and of a controller T2:
 

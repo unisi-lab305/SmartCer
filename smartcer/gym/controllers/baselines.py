@@ -6,7 +6,8 @@ any `cer_data` folder: 0.6.2 wrote its results into `cer_data/<scenario>/simulat
 S18).
 """
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
+from functools import partial
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -20,9 +21,11 @@ from smartcer.gym.controllers.rbc import RBCController
 from smartcer.gym.tracking import ResultsTracker, TrackResults, write_json
 
 
-CONTROLLERS: Mapping[str, type[Controller]] = MappingProxyType({
+# controller name → factory taking the environment
+CONTROLLERS: Mapping[str, Callable[[gym.Env], Controller]] = MappingProxyType({
     NaiveController.name: NaiveController,
-    RBCController.name: RBCController,
+    'rbc_node': partial(RBCController, mode='node'),
+    'rbc_community': partial(RBCController, mode='community'),
 })
 
 
@@ -80,7 +83,7 @@ def check_output_dir(output_dir: str | Path, env: SmartCerEnv) -> Path:
 
 
 def compute_baselines(env: SmartCerEnv, output_dir: str | Path,
-                      controllers: Iterable[str] = ('naive', 'rbc'),
+                      controllers: Iterable[str] = ('naive', 'rbc_community'),
                       seed: int | None = None) -> dict[str, dict[str, Any]]:
     """
     Run one episode per baseline controller and write `<output_dir>/<controller>/`: the community
@@ -89,7 +92,8 @@ def compute_baselines(env: SmartCerEnv, output_dir: str | Path,
     Args:
         env: The environment of the run (its period and episode settings are used).
         output_dir: Run output directory, outside the scenario folder and any `cer_data` folder.
-        controllers: Names of `CONTROLLERS` to run.
+        controllers: Names of `CONTROLLERS` to run. Defaults to the naive controller and the
+            community RBC, the class A reference baseline.
         seed: Seed of every episode's reset.
 
     Returns:

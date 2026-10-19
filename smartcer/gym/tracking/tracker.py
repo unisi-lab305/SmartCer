@@ -31,6 +31,7 @@ class ResultsTracker:
     Attributes:
         node_ids: Node identifiers, in community order.
         capacities: Battery node id → capacity S^max (kWh).
+        soc_min: Battery node id → minimum state of charge S^min (kWh).
         episode: Number of the current episode (incremented at every reset).
         episodes_completed: Number of episodes that reached their last step.
     """
@@ -45,6 +46,8 @@ class ResultsTracker:
         self.node_ids = community.node_ids
         self.capacities = {node_id: community.node(node_id).battery.capacity
                            for node_id in community.storage_node_ids}
+        self.soc_min = {node_id: community.node(node_id).battery.soc_min_kwh
+                        for node_id in community.storage_node_ids}
         self.episode = 0
         self.episodes_completed = 0
         self._community_rows: list[dict[str, Any]] = []
@@ -140,7 +143,7 @@ class ResultsTracker:
             dict[str, Any]: The KPIs.
         """
         community, nodes = self._last()
-        return compute_kpis(community, nodes, self.capacities)
+        return compute_kpis(community, nodes, self.capacities, self.soc_min)
 
     def save(self, output_dir: str | Path, run_config: dict[str, Any] | None = None) -> Path:
         """

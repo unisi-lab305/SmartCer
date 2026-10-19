@@ -373,9 +373,12 @@ SmartCerEnv(scenario, start=None, end=None, episode_length=None, random_start=Fa
 Controller(env)                     bound to the unwrapped SmartCerEnv; reads env.community
     - reset(); act(observation, info) → actions for env.current_step, in [-1, 1]
 ├── NaiveController ('naive')       zero actions
-└── RBCController ('rbc')           FORMULATION section 13 ([M24] Algorithm 1)
+└── RBCController(env, mode='community')   FORMULATION section 13 ([M24] Algorithm 1);
+                                    names 'rbc_node', 'rbc_community'
+CONTROLLERS                         read-only registry: name → factory taking the env
 run_episode(env, controller, seed) → ResultsTracker
-compute_baselines(env, output_dir, controllers=('naive', 'rbc'), seed=None) → {name: KPIs}
+compute_baselines(env, output_dir, controllers=('naive', 'rbc_community'), seed=None)
+    → {name: KPIs}
     writes <output_dir>/<name>/ (community.csv, nodes/<id>.csv, kpis.json, run_config.json) and
     <output_dir>/kpis.json; refuses the scenario folder and any cer_data folder (S18)
 TrackResults(env) wrapper → env.get_wrapper_attr('tracker'): ResultsTracker
@@ -383,18 +386,21 @@ TrackResults(env) wrapper → env.get_wrapper_attr('tracker'): ResultsTracker
       completed episode (only the current and the last completed episode are kept)
 ResultsCallback(output_dir, save_freq=1, run_config=None)   SB3, DummyVecEnv of TrackResults:
     logs KPIs under 'smartcer/<kpi>' at every completed episode, saves every save_freq episodes
-compute_kpis(community_table, node_tables, capacities) → dict      (formulas: metrics/KPI.md)
+compute_kpis(community_table, node_tables, capacities, soc_min) → dict   (formulas: KPI.md)
 fit_score(reference, candidate) → F (%), daily_welfare(community_table) → W per day
 ```
 
-- The RBC computes energies: d = g - l; charge min(d, S^max - s) or discharge min(-d, s - S^min),
-  divided by P Δt and limited to [-1, 1]; the environment clips it to the dynamic bounds with the
-  usual penalty. It reads g and l of step t from the scenario, as in [M24]. A producer never
-  discharges.
+- The RBC computes energies (node side) within the dynamic bounds (`node.get_bounds(t)`), so its
+  actions are never clipped or penalised; it returns float64 actions, applied exactly (a float32
+  equal to a bound may exceed it by 1e-8). Mode `node`: d = g - l, charge min(d, E^cha) or
+  discharge min(-d, E^dis); a producer with g = 0 discharges E^dis. Mode `community` (reference
+  baseline): balance B_t = Σ g - Σ l over all nodes, every battery charges (discharges) the same
+  fraction min(1, |B_t| / Σ E) of its E^cha (E^dis). It reads g and l of step t from the
+  scenario, as in [M24].
 - KPIs: welfare and its components, shared, exported and imported energy, sharing rate
   (shared / exported), coverage rate (shared / imported), battery charge, discharge, cell
-  throughput and equivalent full cycles (throughput / 2 S^max), penalty mean, max and steps
-  (> 1e-9). Rates are fractions.
+  throughput, equivalent full cycles on S^max (`equivalent_full_cycles`) and on S^max - S^min
+  (`efc_usable`), penalty mean, max and steps (> 1e-9). Rates are fractions.
 
 **Known defects** S1-S18 of 0.6.2 are listed in `docs/refactor/REFACTOR_v1.md` section 2; their
 regression tests on the new API are named `test_s<n>_*`. All 0.6.2 modules and their

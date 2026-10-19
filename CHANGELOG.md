@@ -48,13 +48,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `info['obs_clipped']` in the reset and step info: the number of observation values clipped to
   [0, 1] because they lie outside the normaliser's training range
 - Baseline controllers in `smartcer.gym.controllers`: `NaiveController` (idle batteries) and
-  `RBCController` ([M24] Algorithm 1, computed in energy); `compute_baselines` runs them and writes
-  the community table, one table per node, the KPIs and the run configuration to an output
-  directory
+  `RBCController` ([M24] Algorithm 1, computed in energy within the dynamic bounds, so never
+  penalised) with two modes: `node` (each battery follows its own node; a producer's battery
+  discharges when its generation is 0) and `community` (the batteries follow the community balance,
+  pro rata to the energy each can take or deliver; the reference baseline); `compute_baselines`
+  runs them (default `naive` and `rbc_community`) and writes the community table, one table per
+  node, the KPIs and the run configuration to an output directory
 - Results tracking in `smartcer.gym.tracking`: `TrackResults` wrapper with a `ResultsTracker`
   (community and per-node tables, CSV export) and the Stable-Baselines3 `ResultsCallback`
 - KPIs in `smartcer.gym.metrics` (welfare and its components, shared energy, sharing and coverage
-  rates, imports, exports, battery throughput, equivalent full cycles, penalty statistics) and the
+  rates, imports, exports, battery throughput, equivalent full cycles on the nominal and on the
+  usable capacity, penalty statistics) and the
   Fit Score, documented in `smartcer/gym/metrics/KPI.md`
 - `SmartCerEnv.run_config()`, `SmartCerEnv.current_step` and `SmartCerEnv.scenario_path`
 
