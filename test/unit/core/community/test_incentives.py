@@ -113,3 +113,15 @@ def test_uniform_model_per_step_values_and_validation() -> None:
         UniformIncentive([0.1, 0.2], n_steps=3)
     with pytest.raises(ValueError, match='shape'):
         TipIncentive(np.zeros(3))
+
+
+def test_tip_export_without_plant_lowers_the_average_coefficient() -> None:
+    """
+    Test the 0.6.2 reading of FORMULATION section 9: 4 kWh exported by a plant (c = 0.1) and
+    4 kWh by a consumer battery (c = 0), shared 2 kWh → I = 2 / 8 · 0.4 = 0.1 € instead of 0.2 €.
+    """
+    with_battery_export = tip_incentive(2.0, np.array([4.0, 4.0]), np.array([0.1, 0.0]))
+    plant_only = tip_incentive(2.0, np.array([4.0, 0.0]), np.array([0.1, 0.0]))
+
+    assert with_battery_export == pytest.approx(0.1)
+    assert plant_only == pytest.approx(0.2)
