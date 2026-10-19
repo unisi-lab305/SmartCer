@@ -944,3 +944,156 @@ phase, in the format of section 9 of the brief, newest last.
      `surplus` the battery could not charge. Is that acceptable for the class A baseline, or
      should mode `community` charge only batteries whose node has a surplus?
 - Ready for phase 7: yes. The pull request is open and waits for your go-ahead to merge.
+
+- Pull request #8 merged by Leonardo after review (merge commit `86caf80`).
+- Answer (2026-10-19), committed separately at the start of phase 7 (`122ed94`): in mode
+  `community` a prosumer that is importing may charge from its own generation when the community
+  has a surplus. It respects charge ≤ production (D6), and under the virtual sharing model the
+  extra import is covered by the community surplus. FORMULATION section 13 now states this and
+  that it depends on the DIISM answer on the charge rule.
+
+## Phase 7 · Hooks for forecasts and the oracle – 2026-10-19
+
+- Branch and commits: `refactor/v1-phase-7-forecasts-oracle`, created from `main` at `86caf80`.
+  - `122ed94` docs(formulation): state that the community RBC may charge an importing prosumer
+    from its own generation (the phase 6 answer, in its own commit)
+  - `39ea1c2` feat(gym): add forecast providers, the MILP oracle with privileged info and the
+    replay check
+  - `e1c4b49` test(gym): check both action signs of the synthetic oracle separately
+  - this report
+- Done:
+  1. `smartcer/forecasts/`:
+     - `ForecastProvider` protocol (`base.py`): `reset(rng)` and
+       `get(t, horizon) → {'<node_id>/<quantity>': H values}`, quantities `generation` and `load`
+       in kWh per step;
+     - `PerfectForecast(community)` (`perfect.py`): the true values of every node;
+     - read-only registry `FORECAST_PROVIDERS` (`'perfect'`).
+  2. Forecasts in the environment: arguments `forecast` (`'perfect'` or a provider) and
+     `forecast_horizon` H.
+     - The `forecast` section, at the end of the vector, holds `forecast/<node_id>/generation`
+       and `forecast/<node_id>/load` per battery node in action order, H values each by lead time.
+       It covers steps t + 1 … t + H with `observe_current_step=True` and t … t + H − 1 with
+       False (FORMULATION section 12).
+     - The values are scaled with the bounds of `<node_id>/generation` and `<node_id>/load` and
+       clipped to [0, 1]; clipped values are counted in `obs_clipped`.
+     - Episodes use the steps 0 … n − H − 1, so every forecast lies in the data.
+     - `reset` calls `forecast.reset(self.np_random)`.
+  3. `smartcer/oracle/provider.py`:
+     - `read_oracle(folder) → OracleData`, the single adapter that knows the file format;
+     - `OracleProvider(data, community)` (or `.from_folder`): aligns the data with the period and
+       the battery nodes and computes a\* = p^cha / P^cha − p^dis / P^dis. It exposes `actions`,
+       `soc_kwh`, `daily_objective`, `action(t)` and `soc(t)`.
+     - Environment argument `oracle`: a folder or a provider.
+  4. `info['privileged']`, in the reset and step info, refers to the step of the observation it
+     comes with. It holds `t`, plus `oracle_action` and `oracle_soc` with an oracle and
+     `true_future` (kWh, the keys of the observed forecasts) with forecasts. Without either it is
+     `{}`, as before.
+  5. `ReplayController` (`'replay'` in `CONTROLLERS`) plays a\*, float64, without clipping.
+  6. `check_replay(env, output_dir, rtol=1e-3) → ReplayCheck`:
+     - plays a\* over the whole period;
+     - checks K_t ≤ 1e-9 at every step and, with an objective, |Σ W − Σ objective| ≤ rtol ·
+       |Σ objective|;
+     - also reports the largest difference between the replayed and the oracle state of charge
+       and the Fit Score of the daily welfare against the daily objective;
+     - writes `oracle_daily.csv` (date, welfare, objective, difference) and `oracle_replay.json`.
+  7. Tests (49 new):
+     - unit: `test/unit/forecasts/`, `test/unit/oracle/` (adapter and provider on files written
+       to `tmp_path`), `test/unit/gym/test_forecast_observation.py`;
+     - integration: `test_oracle_replay.py`, on the fixture `synthetic_oracle` (conftest), plus the
+       local DIISM test;
+     - the Gymnasium checker and the phase 6 performance rules (no pandas in `step()`, one build
+       per step) now also run with forecasts and an oracle.
+  8. Docs: CONFIG.md (arguments, forecast section, privileged info, oracle files and replay),
+     CLAUDE.md, CHANGELOG, CI (the wheel check imports `smartcer.forecasts` and `smartcer.oracle`).
+- Acceptance checks:
+  - Forecast positions (`test_perfect_forecast_puts_the_true_future_in_the_observation`):
+    - setup: PerfectForecast, H = 3, both timings, every observation of the 45-step episode plus
+      the terminal one;
+    - each `forecast/<node>/<quantity>` slice equals the scaled true values of the documented
+      steps, and `true_future` equals the raw values;
+    - by hand, t = 6, `observe_current_step=True`: pv_bat generates 0, 10, 10 kWh in hours 7-9,
+      observed as 0, 1, 1.
+
+    → passed.
+  - Replay on a synthetic oracle trajectory, generated in the test:
+    - the trajectory: random fractions of the dynamic bounds, seed 7, 14 charging, 44 discharging
+      and 38 idle actions out of 96, rows shuffled, the daily welfare as objective;
+    - `check_replay`: 48 steps, `penalty_max` 0, `penalty_steps` 0, largest state-of-charge
+      difference 2.2e-15 kWh;
+    - welfare −65.663358 € against an objective of −65.663358 €, relative gap 0, Fit Score 100;
+    - `oracle_daily.csv` has 2 days, each with difference 0.
+
+    → passed.
+  - The check fails when it should:
+    - an objective 1 % above the welfare fails with rtol 1e-3 and passes with 0.02;
+    - an oracle that charges pv_bat at midnight (A^upper = 0) is clipped and penalised
+      (K max 0.1) and fails.
+
+    → passed.
+  - Replay on the DIISM files (`test_replay_of_the_diism_oracle`) → skipped, no
+    `smartcer/cer_data/<scenario>/oracle/` folder.
+  - `make test-coverage` → 293 passed, 1 skipped (the DIISM test), coverage 96 %; new modules 94 to
+    100 %.
+  - Speed, Leather year, random actions:
+    - without forecasts: 408–426 µs per step (phase 6: 248–491), unchanged;
+    - with PerfectForecast and H = 12: 538 µs per step, 4.7 s per year, observation of 135 values.
+- Deviations from the brief and why:
+  - `get(t, horizon)` returns the steps t … t + H − 1: t is the first forecast step, not the
+    current one. The brief does not say which. With this reading the provider never receives
+    t − 1 = −1 at the first step of the causal timing.
+  - One episode window for both timings: the last H steps of the data are never controlled, as
+    the brief says. With `observe_current_step=False` one more step would fit.
+  - `info['privileged']` refers to the step of the observation it comes with (the next action),
+    not to the executed step, so that a critic gets a\*_t together with s_t. It carries its own `t`.
+  - The forecast section has the battery nodes only, the same series the observation shows for
+    the current step. It works with both presets, not only `extended`.
+  - The replay check is a library function (`check_replay`) rather than test code only, so that
+    the `milp-check` skill of phase 8 can call it. Beyond the brief it reports the largest
+    state-of-charge difference from the oracle and the Fit Score (phase 5 left the oracle
+    reference to this phase). Neither decides `passed`.
+  - The oracle folder layout and the objective file are my choice; the brief names the trajectory
+    columns only (assumptions below).
+  - `PerfectForecast` keeps the series in one 2-D array so a forecast is one copy. The first
+    version, one copy per series, cost +200 µs per step on Leather.
+- Open questions for Leonardo:
+  1. Assumptions about the oracle file format, to confirm with the DIISM:
+     1. One folder per oracle with `trajectory.csv` and an optional `objective.csv`; the replay
+        test looks for `smartcer/cer_data/<scenario>/oracle/`.
+     2. `trajectory.csv` is long: one row per step and battery node, in any order. Extra columns
+        are ignored.
+     3. `datetime` is the start of the step, in local time without zone, with the same labels as
+        the scenario CSV files. Timestamps with a time zone are rejected.
+     4. `node_id` uses the scenario's node ids, and the file has exactly the battery nodes. A row
+        for a node without a battery, such as the aggregated consumers, is an error.
+     5. `p_cha_kw` and `p_dis_kw` are average powers over the step in kW, on the node side
+        (FORMULATION section 4): p^cha is what the node supplies to the battery, p^dis what it
+        receives. Both are ≥ 0; values down to −1e-9 are read as 0. If the MILP writes energies
+        per step (kWh), the numbers agree only with Δt = 1 h.
+     6. Charge and discharge are not simultaneous. A row with both is not rejected: a\* is the
+        net value, and the replay would show it as a state-of-charge difference. An |a\*| above
+        1 + 1e-9 is rejected.
+     7. `soc_kwh` is the state of charge at the end of the step. The file has no initial state:
+        the environment starts from the scenario's `soc_initial` (default S^min), which must be
+        the MILP's S^ini.
+     8. Every step of the period needs a row for every battery node. Rows outside the period are
+        ignored, so a yearly file also serves sub-periods.
+     9. `objective.csv` has one row per calendar day (`date`, `objective`). The value is the
+        day's welfare in € with the sign of FORMULATION section 10, larger is better. If the MILP
+        minimises a cost, the sign must be flipped in the adapter. Every day of the period needs
+        a value; a period that starts or ends inside a day compares a partial day with a whole
+        MILP day.
+     10. The MILP objective is Σ W_t of section 10: the same incentive model and value, the same
+         π^sto, no other terms. Otherwise the 1e-3 welfare check fails for modelling reasons,
+         not because the replay is wrong.
+     11. Solver tolerances: the replay requires K_t ≤ 1e-9. A MILP solution that sits on a bound
+         with a 1e-7 solver tolerance would count as penalised steps. If that happens with the
+         real files, the adapter or the tolerance will need a decision.
+  2. Forecasts of the aggregated non-battery load: in the Molise scenario about 100 consumers
+     form one load without a battery. The forecast section covers the battery nodes only. Should
+     it also forecast `community/generation` and `community/load`, the totals of the nodes
+     without a battery that the `extended` preset observes for the current step?
+  3. `oracle_soc` is the oracle state at the end of step t, after a\*_t, as in the file. Would the
+     critic rather receive the state at the start of step t, which the observation's SoC
+     matches?
+- Ready for phase 8: yes. The pull request is open and waits for your review; you merge this
+  phase yourself.
