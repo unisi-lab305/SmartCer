@@ -28,6 +28,7 @@ from smartcer.data.schema import (
     DATETIME_COLUMN,
     FORMAT_VERSION,
     REQUIRED_COLUMNS,
+    OPTIONAL_COLUMNS,
     NodeConfig,
     ScenarioConfig,
     TimestampWarning,
@@ -106,7 +107,8 @@ def load_scenario(path: str | Path, start: TimestampLike = None,
             raise ValueError(f'{label}: {problems[0]}')
         irregularities += [f'{label}: {problem}' for problem in problems[:_MAX_LISTED]]
         selection = _select_period(table, start_ts, end_ts, label)
-        _check_values(selection, required, label)
+        optional = tuple(c for c in OPTIONAL_COLUMNS[node_config.node_type] if c in table.columns)
+        _check_values(selection, required + optional, label)
         selections.append(selection)
 
     timestamps = _align(config, selections, strict, irregularities)
@@ -345,7 +347,8 @@ def _build_node(node_config: NodeConfig, selection: pd.DataFrame,
     node_type = node_config.node_type
     generation = column('production') * to_kwh if node_type != 'consumer' else zeros
     load = column('consumption') * to_kwh if node_type != 'producer' else zeros
-    sell = column('sell_price') if node_type != 'consumer' else zeros
+    has_sell = node_type != 'consumer' or 'sell_price' in selection.columns
+    sell = column('sell_price') if has_sell else zeros
     buy = column('buy_price') if node_type != 'producer' else zeros
 
     battery = None

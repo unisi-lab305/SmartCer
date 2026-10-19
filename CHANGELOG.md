@@ -29,7 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   energy, `uniform` and `tip` incentives and the welfare breakdown of `docs/FORMULATION.md`; on the
   0.6.2 scenarios with idle batteries it reproduces the 0.6.2 community results
 - Nodes support an explicit time step and consumers with a battery (0.6.2 defects S5 and S8); the
-  charge rule `production` or `surplus` is set per battery with `charge_limit`
+  charge rule `production` or `surplus` is set per battery with `charge_limit`; a consumer's optional
+  `sell_price` column pays the energy its battery exports
 
 ### Changed
 

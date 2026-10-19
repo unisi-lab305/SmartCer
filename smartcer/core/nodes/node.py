@@ -86,8 +86,8 @@ class Node:
         delta_t: Duration of a step (hours).
         generation_kwh: Generation per step g (kWh), zero for a consumer.
         load_kwh: Load per step l (kWh), zero for a producer.
-        sell_price: Sell price π^egr per step (€/kWh); zero where the node type has none.
-        buy_price: Buy price π^igr per step (€/kWh); zero where the node type has none.
+        sell_price: Sell price π^egr per step (€/kWh); zero for a consumer without the column.
+        buy_price: Buy price π^igr per step (€/kWh); zero for a producer.
         battery: The node's battery, or None.
         photovoltaic: TIP parameters of the node's plant (`tip_base`, `tip_threshold`, `fi_zone`,
             `pnrr`, ...), or None.

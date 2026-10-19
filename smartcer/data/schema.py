@@ -23,6 +23,8 @@ INCENTIVE_MODELS = ('uniform', 'tip')
 DATETIME_COLUMN = 'datetime'
 # 0.6.2 column name → 1.0 column name
 COLUMN_ALIASES = {'price_exp': 'sell_price', 'price_imp': 'buy_price'}
+# columns read when present (consumer battery exports are paid at the sell price if given)
+OPTIONAL_COLUMNS = {'producer': (), 'consumer': ('sell_price',), 'prosumer': ()}
 REQUIRED_COLUMNS = {
     'producer': ('production', 'sell_price'),
     'consumer': ('consumption', 'buy_price'),

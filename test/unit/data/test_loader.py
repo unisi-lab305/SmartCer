@@ -202,3 +202,20 @@ def test_incentive_csv_column(write_scenario: Callable[..., Path]) -> None:
     (path / 'pi.csv').write_text(shifted)
     with pytest.raises(ValueError, match=r'incentive.unit_value \(pi.csv\): timestamps differ'):
         load_scenario(path)
+
+
+def test_consumer_sell_price_is_read_when_present(write_scenario: Callable[..., Path]) -> None:
+    """
+    Test that a consumer's sell_price column is read when it exists and is 0 otherwise.
+
+    Args:
+        write_scenario: Scenario factory.
+    """
+    with_price = csv(['2022-01-03 00:00:00,1,0.3,0.12'],
+                     'datetime,consumption,buy_price,sell_price')
+    without_price = csv(['2022-01-03 00:00:00,1,0.3'], 'datetime,consumption,buy_price')
+    nodes = {'a': {'type': 'consumer', 'csv': 'a.csv'}, 'b': {'type': 'consumer', 'csv': 'b.csv'}}
+    community = load_scenario(write_scenario(nodes, {'a.csv': with_price, 'b.csv': without_price}))
+
+    assert community.node('a').sell_price.tolist() == [0.12]
+    assert community.node('b').sell_price.tolist() == [0.0]

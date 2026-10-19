@@ -106,12 +106,13 @@ One file per node (several nodes may share one through `csv` or the `_N` rule; i
 | `datetime` | required | required | required | ISO 8601, e.g. `2022-01-01 00:00:00`, start of the step |
 | `production` | required | ignored | required | kWh per step, or kW with `units: kW` |
 | `consumption` | ignored | required | required | kWh per step, or kW with `units: kW` |
-| `sell_price` (alias `price_exp`) | required | ignored | required | €/kWh |
+| `sell_price` (alias `price_exp`) | required | optional | required | €/kWh |
 | `buy_price` (alias `price_imp`) | ignored | required | required | €/kWh |
 
-Other columns are ignored. A file with both an alias and its 1.0 name raises `ValueError`. Prices a
-node type does not require are set to 0: a producer never imports under the charge rule, and the
-energy a consumer's battery exports (discharge beyond the load) earns nothing.
+Other columns are ignored. A file with both an alias and its 1.0 name raises `ValueError`. A
+consumer's `sell_price` is read when the column exists (and then validated like a required column):
+it pays the energy the consumer's battery exports (discharge beyond the load); without the column
+that energy earns nothing. A producer's buy price is 0: it never imports under the charge rule.
 
 ## 3. Validation
 
