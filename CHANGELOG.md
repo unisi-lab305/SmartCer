@@ -35,6 +35,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   observation with a named layout (`obs_layout`, preset `meco`), episodes of configurable length
   with optional random start, option `observe_current_step` for the information timing
 - `SmartCerEnv.from_v062_config` to run 0.6.2 run configurations (`simulation`, `reward` keys)
+- Reward types `welfare` (default), `profit` and `energy` (0.6.2 legacy) in
+  `smartcer.gym.rewards`, selected with `reward`; `reward_per_node=True` reports one reward per
+  battery node in `info['reward']['nodes']` and returns their sum
+- Observation preset `extended`: Italian holiday flag, totals of generation and load of the nodes
+  without a battery, optional `lookback` of generation and load per battery node, and a section
+  reserved for forecasts
+- `MinMaxNormalizer`: generation and load are scaled with bounds fitted on a declared training
+  window (`normalizer_window`, default the whole period), saved to and loaded from JSON
+  (`env.normalizer.save(path)`, `normalizer=path`)
+- `info['privileged']` (empty) in the reset and step info, reserved for the critic's data
 
 ### Changed
 
@@ -43,6 +53,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `import smartcer` registers `SmartCer-v1`; the `gymnasium.envs` entry point registers it with
   Gymnasium < 1.0
 - `tqdm` is no longer a dependency
+- `info['reward']` holds `type`, `main`, `penalty` and `total` (instead of `welfare`, `penalty`,
+  `total`)
+- Scaled generation and load are clipped to [0, 1], so values beyond the training range stay inside
+  the observation space
+- `SmartCerEnv.from_v062_config` maps the 0.6.2 reward type `energy` and `single_agent: true`
+  (per-node rewards) instead of raising
 
 ### Deprecated
 

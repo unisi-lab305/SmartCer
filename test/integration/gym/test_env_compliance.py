@@ -19,7 +19,7 @@ pytestmark = pytest.mark.integration
 def test_gymnasium_check_env_passes(mini_cer_v1_path: Path) -> None:
     """
     Test that the Gymnasium environment checker accepts the environment, with fixed and random
-    episode starts and both information timings.
+    episode starts, both information timings, both presets and a per-node reward.
 
     Args:
         mini_cer_v1_path: Path of the 1.0-format synthetic scenario.
@@ -27,6 +27,9 @@ def test_gymnasium_check_env_passes(mini_cer_v1_path: Path) -> None:
     check_env(gym.make(ENV_ID, scenario=mini_cer_v1_path).unwrapped)
     check_env(gym.make(ENV_ID, scenario=mini_cer_v1_path, episode_length=12, random_start=True,
                        observe_current_step=False).unwrapped)
+    check_env(gym.make(ENV_ID, scenario=mini_cer_v1_path, observation='extended', lookback=3,
+                       reward='profit', reward_per_node=True, episode_length=12,
+                       random_start=True).unwrapped)
 
 
 def test_stable_baselines3_check_env_passes(mini_cer_v1_path: Path) -> None:

@@ -1,4 +1,12 @@
 # SmartCer
+
+> [!WARNING]
+> **SmartCer 1.0 is under development on `main`.** The 0.6.2 API described below (`SmartCer-v0`,
+> `smartcer.cer_env`, the 0.6.2 rewards and run configuration) has been removed; the environment
+> is now `SmartCer-v1` (`docs/CONFIG.md`, `docs/FORMULATION.md`). To use the old version, check out
+> the tag `v0.6.2` (`git checkout v0.6.2`) and follow the README of that version. This README will
+> be rewritten for the 1.0 release.
+
 **SmartCer** is a Gymnasium environment for the simulation of Renewable Energy Communities (CERs). SmartCer allows the
 development and testing of reinforcement learning algorithms for the control of energy storage systems in a CER. The
 objective of these RL-based controllers is to minimize energy costs, maximize incentives, and maintain grid balance.  

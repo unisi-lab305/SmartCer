@@ -173,14 +173,54 @@ The run is configured by the arguments of `SmartCerEnv` (`smartcer.gym`), also a
 | `episode_length` | whole period | steps per episode |
 | `random_start` | `False` | first step of each episode drawn with `env.np_random`; otherwise the first step of the period |
 | `observe_current_step` | `True` | information timing, FORMULATION section 12; with `False` the generation and load of the first row of the data are observed as 0 |
-| `observation` | `'meco'` | observation preset ([M24] Tab. II); see `env.obs_layout` |
-| `reward` | `'welfare'` | R_t = W_t - σ K_t (other types from phase 4) |
+| `observation` | `'meco'` | observation preset: `'meco'` ([M24] Tab. II) or `'extended'`; see below and `env.obs_layout` |
+| `lookback` | `0` | past steps of generation and load per battery node (`'extended'` only) |
+| `normalizer` | `None` | fitted normaliser of generation and load: a `MinMaxNormalizer` or the path of its JSON file |
+| `normalizer_window` | whole period | `(first, last)` timestamps, both inclusive (either may be `None`), of the training window the normaliser is fitted on; not with `normalizer` |
+| `reward` | `'welfare'` | reward type: `'welfare'` (R_t = W_t - σ K_t), `'profit'` or `'energy'` (FORMULATION section 11) |
+| `reward_per_node` | `False` | per-node variant of `'profit'` or `'energy'`: r_u = m_u - σ k_u per battery node in `info['reward']['nodes']`, scalar reward Σ_u r_u |
 | `penalty_coefficient` | `10.0` | σ |
 | `seed` | `None` | seed used by the first `reset()` called without a seed |
 
 Actions are clipped to [-1, 1] without penalty before the nodes clip them to their dynamic bounds
 (penalised, FORMULATION section 7); non-finite actions raise `ValueError`. Episodes end on their last
 step with `truncated=True`.
+
+### Observation
+
+The observation is a flat `Box`; `env.obs_layout` maps each feature name to its slice. Sections,
+in order:
+
+| Section | Features | Presets |
+|---|---|---|
+| time | `time/month`, `time/hour` (sin, cos), `time/day_of_week` (one-hot, Monday first) | both |
+| time | `time/holiday`: 1 on Italian national holidays (`holidays` package), else 0 | `extended` |
+| price | `price/sell`, `price/buy`, €/kWh, not normalised, when all nodes share the same series; otherwise per battery node (below) | both |
+| community | `community/generation`, `community/load`: totals of the nodes without a battery | `extended` |
+| nodes | per battery node, in action order: [`<node>/sell_price`, `<node>/buy_price`], `<node>/generation`, `<node>/load`, [`<node>/generation_lookback`, `<node>/load_lookback`: `lookback` values, most recent first], `<node>/soc` (scaled to [S^min, S^max]), `<node>/a_lower`, `<node>/a_upper` | both (lookback: `extended`) |
+| forecast | reserved for `forecast/<node>/<quantity>`, empty | – |
+
+Generation and load (also the community totals and the lookback) are min-max scaled with the
+bounds of the training window `normalizer_window` and clipped to [0, 1], so that values beyond the
+training range (e.g. in a test period) stay inside the space. With `observe_current_step=False`
+they are those of step t - 1; values before the first row of the data are 0. Save the normaliser of
+a training environment and pass it to the evaluation one:
+
+```python
+train = SmartCerEnv('path/to/scenario', end='2022-09-30 23:00')
+train.normalizer.save('normalizer.json')    # bounds, window and scenario name
+test = SmartCerEnv('path/to/scenario', start='2022-10-01 00:00', normalizer='normalizer.json')
+```
+
+### Info
+
+`info` of `reset()`: `t`, `timestamp`, `privileged`, `episode_start`, `episode_end`. `info` of
+`step()`: `t`, `timestamp`, `privileged`, `reward` (`type`, `main`, `penalty` = weighted penalty,
+`total` = R_t and, with `reward_per_node`, `nodes`: node → `main`, `penalty`, `total`), `welfare`
+(revenue, cost, storage cost, incentive, shared, exported and imported energy, total), `penalty`
+(K_t), `action` (after the [-1, 1] clip) and `nodes` (per-node flows, economics, state of charge,
+requested and applied action, bounds). `privileged` holds data for the critic only and stays empty
+until the oracle and forecast providers.
 
 ### 0.6.2 run keys
 
@@ -192,9 +232,12 @@ step with `truncated=True`.
 | `simulation.start`, `simulation.end` | `start`, `end` |
 | `simulation.seed` | `seed` |
 | `reward.type` `'profit'` or `'cost'` with `reward.single_agent: false` | `reward='welfare'` |
+| `reward.type` `'profit'` or `'cost'` with `reward.single_agent: true` | `reward='profit'`, `reward_per_node=True` |
+| `reward.type` `'energy'` | `reward='energy'`, with `reward_per_node=True` if `reward.single_agent` is true |
 | `reward.constraints.coefficient` | `penalty_coefficient` (0 if `reward.constraints.penalty` is false) |
 | `simulation.delta_input`, `simulation.delta_output`, `reward.constraints.max_ratio`, `reward.scaler.*` | not used (no reward scaling in the environment) |
 
-`reward.type: 'energy'` and `reward.single_agent: true` raise `ValueError`.
+With `single_agent: true` the per-node rewards are in `info['reward']['nodes']` and the scalar
+reward is their sum (0.6.2 returned a list). Other reward types raise `ValueError`.
 
 Forecast and oracle providers and the output directory are added in later phases.
