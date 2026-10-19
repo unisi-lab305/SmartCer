@@ -11,7 +11,9 @@ phase, in the format of section 9 of the brief, newest last.
   - `15b0c82` ci: add Makefile, pytest config, pre-commit hooks and GitHub workflows
   - `ba19422` test: add synthetic scenario, characterisation and known-defect tests of 0.6.2
   - `ba9c565` docs: add CLAUDE.md, CHANGELOG and Claude Code commands
-  - final commit: docs(refactor): add phase 0 progress report (this file)
+  - `6d2a949` ci(release): drop separator lines from the release notes
+  - `c99f0c7` docs(refactor): add phase 0 progress report (this file), plus a follow-up commit
+    completing this list
   - local annotated tag `v0.6.2` on `dd1c26c` (not pushed)
 - Done:
   1. Tag `v0.6.2` created locally on the current `main`.
