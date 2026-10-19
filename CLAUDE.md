@@ -140,8 +140,9 @@ Five slash commands are available in `.claude/commands/`:
   1. Unit tests (`make test-unit`)
   2. Integration tests (`make test-integration`)
   3. Coverage report (`make test-coverage`), uploaded as an artifact (HTML + XML)
-  4. Builds the wheel, installs it in a clean virtual environment and imports `smartcer` and
-     `smartcer.cer_env` from outside the repository (guards defect S1, missing subpackages)
+  4. Builds the wheel, installs it in a clean virtual environment and imports `smartcer`,
+     `smartcer.cer_env`, `smartcer.core` and `smartcer.data` from outside the repository (guards
+     defect S1, missing subpackages)
 - **View results**: `https://github.com/unisi-lab305/SmartCer/actions`
 
 **GitHub Release** (`.github/workflows/release.yml`):
