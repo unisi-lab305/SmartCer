@@ -136,6 +136,8 @@ class ReplayCheck:
         penalty_steps: Steps with K_t above `PENALTY_TOLERANCE` (1e-9).
         soc_error_max_kwh: Largest |s_t - s*_t| between the replayed and the oracle state of
             charge, over steps and batteries (kWh).
+        simultaneous_rows: Oracle rows of the period (step and battery) with both p^cha > 0 and
+            p^dis > 0, which the replay cannot reproduce (`OracleProvider.simultaneous_rows`).
         welfare: Cumulative welfare of the replay Σ_t W_t (€).
         objective: Cumulative MILP objective of the days of the period (€), or None without an
             objective file.
@@ -150,6 +152,7 @@ class ReplayCheck:
     penalty_max: float
     penalty_steps: int
     soc_error_max_kwh: float
+    simultaneous_rows: int
     welfare: float
     objective: float | None
     relative_gap: float | None
@@ -163,7 +166,9 @@ def check_replay(env: SmartCerEnv, output_dir: str | Path, rtol: float = 1e-3,
     """
     Play the oracle actions a* over the whole period and compare the result with the MILP.
 
-    Checks that no step is penalised (K_t ≤ 1e-9) and, when the oracle has a daily objective, that
+    The period must consist of whole days (first step at midnight, last step ending at
+    midnight), so that every day of the replay is compared with a whole MILP day. Checks that no
+    step is penalised (K_t ≤ 1e-9) and, when the oracle has a daily objective, that
     the cumulative welfare lies within `rtol` of the cumulative objective. Writes
     `<output_dir>/oracle_daily.csv` (per day: `date`, `welfare` of the replay and, with an
     objective, `objective` and `difference` = welfare - objective) and
@@ -181,7 +186,8 @@ def check_replay(env: SmartCerEnv, output_dir: str | Path, rtol: float = 1e-3,
 
     Raises:
         ValueError: If the environment has no oracle, its episode does not cover the whole
-            period, rtol is negative or the output directory is not allowed.
+            period, the period is not made of whole days, rtol is negative or the output
+            directory is not allowed.
     """
     folder = check_output_dir(output_dir, env)
     if env.oracle is None:
@@ -190,6 +196,11 @@ def check_replay(env: SmartCerEnv, output_dir: str | Path, rtol: float = 1e-3,
         raise ValueError(f'the replay covers the whole period of {env.community.n_steps} steps, '
                          f'the episode has {env.episode_length}: create the environment without '
                          f'episode_length and forecasts')
+    stamps = pd.DatetimeIndex(env.community.timestamps)
+    end = stamps[-1] + pd.Timedelta(hours=env.community.delta_t)
+    if stamps[0] != stamps[0].normalize() or end != end.normalize():
+        raise ValueError(f'the replay compares whole days: the period {stamps[0]} → {stamps[-1]} '
+                         f'must start at midnight and its last step must end at midnight')
     if np.isnan(rtol) or rtol < 0:
         raise ValueError(f'rtol must be ≥ 0, got {rtol!r}')
     tracker = run_episode(env, ReplayController(env), seed=seed)
@@ -218,6 +229,7 @@ def check_replay(env: SmartCerEnv, output_dir: str | Path, rtol: float = 1e-3,
         penalty_max=float(penalty.max()),
         penalty_steps=penalty_steps,
         soc_error_max_kwh=float(np.max(np.abs(soc - env.oracle.soc_kwh))),
+        simultaneous_rows=env.oracle.simultaneous_rows,
         welfare=welfare,
         objective=objective,
         relative_gap=relative_gap,

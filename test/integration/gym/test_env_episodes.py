@@ -102,8 +102,8 @@ def test_episode_length_and_truncation(mini_cer_v1_path: Path) -> None:
 
 def test_s10_terminal_observation_comes_from_last_step(mini_cer_v1_path: Path) -> None:
     """
-    Test S10: the observation returned with truncated=True describes the last step (23:00 of
-    day 2), not step 0, and holds the final state of charge.
+    Test S10: on the last step of the data, the observation returned with truncated=True
+    describes that step (23:00 of day 2), not step 0, and holds the final state of charge.
 
     Args:
         mini_cer_v1_path: Path of the 1.0-format synthetic scenario.
@@ -118,6 +118,70 @@ def test_s10_terminal_observation_comes_from_last_step(mini_cer_v1_path: Path) -
     assert hour == pytest.approx([np.sin(2 * np.pi * 23 / 24), np.cos(2 * np.pi * 23 / 24)],
                                  abs=1e-6)
     assert obs[env.obs_layout['time/day_of_week']].tolist() == [0, 1, 0, 0, 0, 0, 0]
+
+
+def start_at(env: SmartCerEnv, start: int) -> tuple[np.ndarray, dict[str, Any]]:
+    """
+    Reset a random-start environment with the first seed whose episode starts at a given step.
+
+    Args:
+        env: Environment with `random_start=True`.
+        start: First step wanted.
+
+    Returns:
+        tuple[np.ndarray, dict[str, Any]]: Reset observation and info.
+    """
+    seed = next(s for s in range(10_000) if env.reset(seed=s)[1]['episode_start'] == start)
+    return env.reset(seed=seed)
+
+
+def test_terminal_observation_is_the_next_step(mini_cer_v1_path: Path,
+                                               synthetic_oracle: Path) -> None:
+    """
+    Test that a truncated random-start episode of steps 10-21 returns the observation of step
+    22 with the final battery states, and the privileged data of step 22.
+
+    With zero actions the states of charge stay at S^ini (no self-discharge), so the terminal
+    observation equals the reset observation of an episode starting at 22. With random actions
+    every feature but the state of charge and the bounds equals it too, and those come from the
+    final states of charge.
+
+    Args:
+        mini_cer_v1_path: Path of the 1.0-format synthetic scenario.
+        synthetic_oracle: Oracle folder of the synthetic scenario.
+    """
+    env = SmartCerEnv(mini_cer_v1_path, episode_length=12, random_start=True,
+                      oracle=synthetic_oracle)
+    other = SmartCerEnv(mini_cer_v1_path, episode_length=12, random_start=True,
+                        oracle=synthetic_oracle)
+    reset_obs, reset_info = start_at(other, 22)
+    battery_features = [name for node in env.storage_node_ids
+                        for name in (f'{node}/soc', f'{node}/a_lower', f'{node}/a_upper')]
+    rest = np.ones(env.observation_space.shape[0], dtype=bool)
+    for name in battery_features:
+        rest[env.obs_layout[name]] = False
+
+    for actions in (np.zeros((12, 2)), np.random.default_rng(3).uniform(-1, 1, (12, 2))):
+        start_at(env, 10)
+        for action in actions:
+            obs, _, _, truncated, info = env.step(action)
+
+        assert truncated and info['t'] == env.current_step == 21
+        assert info['privileged']['t'] == 22
+        np.testing.assert_array_equal(info['privileged']['oracle_action'],
+                                      reset_info['privileged']['oracle_action'])
+        np.testing.assert_array_equal(obs[rest], reset_obs[rest])
+        for node_id in env.storage_node_ids:
+            node = env.community.node(node_id)
+            battery = node.battery
+            soc = (battery.soc_kwh - battery.soc_min_kwh) / (battery.capacity - battery.soc_min_kwh)
+            a_upper, a_lower = node.get_bounds(22)
+            np.testing.assert_allclose(
+                [obs[env.obs_layout[f'{node_id}/{name}']][0] for name in ('soc', 'a_lower',
+                                                                          'a_upper')],
+                [soc, a_lower, a_upper], atol=1e-7)
+        if not actions.any():
+            np.testing.assert_array_equal(obs, reset_obs)
 
 
 def test_reward_is_welfare_minus_penalty_and_info(mini_cer_v1_path: Path) -> None:

@@ -93,7 +93,9 @@ def test_perfect_forecast_puts_the_true_future_in_the_observation(
     observation of an episode holds, at `forecast/<node>/<quantity>`, the scaled true values of
     steps t + 1..t + 3 (`observe_current_step=True`) or t..t + 2 (False), and
     `info['privileged']['true_future']` holds the same values in kWh. By hand, for t = 6 and
-    True: pv_bat generates 0, 10, 10 kWh in hours 7-9 (maximum 10) → 0, 1, 1.
+    True: pv_bat generates 0, 10, 10 kWh in hours 7-9 (maximum 10) → 0, 1, 1. The episode ends on
+    step 44; its terminal observation is that of step 45 with False, and of step 44 with True,
+    because the forecasts of step 45 would need step 48, beyond the data.
 
     Args:
         mini_cer_v1_path: Path of the 1.0-format synthetic scenario.
@@ -107,8 +109,7 @@ def test_perfect_forecast_puts_the_true_future_in_the_observation(
     actions = np.random.default_rng(0).uniform(-1.0, 1.0, size=(env.episode_length, 2))
     seen = []
     for action in [*actions, None]:
-        t = env.current_step
-        assert info['privileged']['t'] == t
+        t = info['privileged']['t']
         first = t + offset
         for key in FORECAST_KEYS:
             node_id, quantity = key.split('/')
@@ -125,8 +126,7 @@ def test_perfect_forecast_puts_the_true_future_in_the_observation(
             obs, _, _, _, info = env.step(action)
 
     assert env.episode_length == 45
-    # the terminal observation comes from the last step again
-    assert seen == [*range(45), 44]
+    assert seen == [*range(45), 44 if observe_current_step else 45]
 
 
 def test_forecast_horizon_shortens_the_episodes(mini_cer_v1_path: Path) -> None:

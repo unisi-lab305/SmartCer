@@ -344,9 +344,10 @@ SmartCerEnv(scenario, start=None, end=None, episode_length=None, random_start=Fa
       seeds the action space, resets the forecast provider with np_random
     - step(action) → (obs, reward, terminated=False, truncated, info)
         clip action to [-1, 1] (no penalty; non-finite → ValueError) → Community.step(t, action)
-        → reward calculator (R_t = W_t - σ K_t by default); truncated on the last step of the
-        episode, whose observation is
-        the terminal one (same step, new state); step() then needs a reset
+        → reward calculator (R_t = W_t - σ K_t by default); truncated on the last step t of the
+        episode, whose terminal observation (and privileged info) is that of step t + 1 with
+        the final battery states, or of step t on the last step of the data (or when the
+        forecasts of t + 1 would leave it); step() then needs a reset
     - from_v062_config(cer_path, cer_config) → SmartCerEnv (0.6.2 run keys, DeprecationWarning;
       single_agent True → reward_per_node, 'energy' → reward 'energy')
 ```
@@ -394,7 +395,8 @@ ForecastProvider (Protocol): reset(rng), get(t, horizon) → {'<node_id>/<quanti
 FORECAST_PROVIDERS                  read-only registry: 'perfect' → factory taking the community
 read_oracle(folder) → OracleData    the only function that knows the oracle file format
 OracleProvider(data, community)     .from_folder(folder, community); actions a* (n_steps, N),
-                                    soc_kwh, daily_objective, action(t), soc(t)
+                                    soc_kwh, daily_objective, simultaneous_rows, action(t), soc(t)
+OracleWarning                       rows with p_cha > 0 and p_dis > 0 (count, first timestamp)
 ```
 
 - Forecasts enter only the observation, oracle data only `info['privileged']` and the
@@ -419,8 +421,9 @@ Controller(env)                     bound to the unwrapped SmartCerEnv; reads en
 CONTROLLERS                         read-only registry: name → factory taking the env
 run_episode(env, controller, seed) → ResultsTracker
 check_replay(env, output_dir, rtol=1e-3, seed=None) → ReplayCheck
-    plays a* over the whole period: passed if K_t ≤ 1e-9 at every step and the cumulative welfare
-    is within rtol of the MILP objective; writes oracle_daily.csv and oracle_replay.json
+    plays a* over the whole period (whole days only): passed if K_t ≤ 1e-9 at every step and the
+    cumulative welfare is within rtol of the MILP objective; reports the oracle rows with
+    simultaneous charge and discharge; writes oracle_daily.csv and oracle_replay.json
 compute_baselines(env, output_dir, controllers=('naive', 'rbc_community'), seed=None)
     → {name: KPIs}
     writes <output_dir>/<name>/ (community.csv, nodes/<id>.csv, kpis.json, run_config.json) and

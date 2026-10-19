@@ -14,12 +14,15 @@ DIISM answers; `read_oracle` is the only function that knows it):
   objective of the day as a welfare in € (section 10, larger is better). Other columns are ignored.
 
 `OracleProvider` aligns the data with a community and computes the optimal actions
-a* = p^cha / P^cha - p^dis / P^dis of every step.
+a* = p^cha / P^cha - p^dis / P^dis of every step. Rows that charge and discharge in the same step
+are counted and reported with an `OracleWarning`: a* is their net value, so the replay cannot
+reproduce them.
 """
 
 from dataclasses import dataclass
 import datetime
 from pathlib import Path
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -33,6 +36,13 @@ TRAJECTORY_COLUMNS = ('datetime', 'node_id', 'p_cha_kw', 'p_dis_kw', 'soc_kwh')
 OBJECTIVE_COLUMNS = ('date', 'objective')
 # solver round-off accepted on the sign of the powers and on |a*| ≤ 1
 TOLERANCE = 1e-9
+
+
+class OracleWarning(UserWarning):
+    """
+    The oracle data are readable but the replay cannot reproduce them exactly (e.g. simultaneous
+    charge and discharge).
+    """
 
 
 @dataclass(frozen=True)
@@ -231,13 +241,16 @@ class OracleProvider:
         soc_kwh: Oracle state of charge at the end of each step (kWh), shape (n_steps, N).
         daily_objective: MILP objective per calendar day of the period (€), indexed by
             `datetime.date`, or None.
+        simultaneous_rows: Rows of the period (step and node) with both p^cha > 0 and p^dis > 0.
     """
 
     def __init__(self, data: OracleData, community: Community) -> None:
         """
         Align the oracle data with the steps and battery nodes of a community.
 
-        Rows outside the community period are ignored.
+        Rows outside the community period are ignored. Rows of the period that charge and
+        discharge in the same step are counted (`simultaneous_rows`) and reported with one
+        `OracleWarning` (count and first timestamp).
 
         Args:
             data: Oracle data (`read_oracle`).
@@ -262,6 +275,14 @@ class OracleProvider:
                              f'{index[0]} → {index[-1]}, first {absent[0]}')
         p_cha = data.p_cha_kw.loc[index, list(node_ids)].to_numpy(dtype=np.float64)
         p_dis = data.p_dis_kw.loc[index, list(node_ids)].to_numpy(dtype=np.float64)
+        both = (p_cha > 0.0) & (p_dis > 0.0)
+        self.simultaneous_rows = int(np.count_nonzero(both))
+        if self.simultaneous_rows:
+            t, u = np.argwhere(both)[0]
+            warnings.warn(f'{data.source}: {self.simultaneous_rows} rows of the period charge and '
+                          f'discharge in the same step (p_cha_kw > 0 and p_dis_kw > 0), first at '
+                          f'{index[t]} (node {node_ids[u]!r}); a* is their net value, so the '
+                          f'replay cannot reproduce them', OracleWarning, stacklevel=2)
         batteries = [community.node(i).battery for i in node_ids]
         actions = (p_cha / np.array([b.power_charge_max for b in batteries])
                    - p_dis / np.array([b.power_discharge_max for b in batteries]))
