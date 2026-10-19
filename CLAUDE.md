@@ -302,8 +302,9 @@ Node(node_id, node_type, delta_t, generation_kwh, load_kwh, sell_price, buy_pric
   `action_requested`, `action_applied`, `a_upper`, `a_lower`.
 - `TipIncentive` holds the per-step, per-node coefficients (0 for nodes without a plant) and
   `potential(t, export)`; its incentive divides by the total export of all nodes.
-- Loader: 1.0 scenarios are validated strictly; 0.6.2 scenarios are aligned by position and their
-  timestamp irregularities raise a `TimestampWarning` (docs/CONFIG.md section 4).
+- Loader: 1.0 scenarios are validated strictly; 0.6.2 scenarios are aligned by position (the
+  period is selected on the first node's timestamps and every node is cut at the same rows) and
+  their timestamp irregularities raise a `TimestampWarning` (docs/CONFIG.md section 4).
 
 ### Environment (1.0), `smartcer/gym/`
 

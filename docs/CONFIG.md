@@ -149,12 +149,14 @@ A `config.json` without `format_version` and with the groups `Producers`, `Consu
 | (implicit) | `delta_t: 1.0`, `units: "kWh"`, `incentive: {"model": "tip"}` |
 
 **Timestamps.** As in 0.6.2, the rows of the nodes are aligned by position and the community uses
-the timestamps of the first node. Unsorted, duplicated or wrongly spaced timestamps, and nodes
-whose timestamps differ from the first node's, are reported in one `TimestampWarning`
-(`smartcer.data.TimestampWarning`) instead of raising; the nodes must still have the same number of
-rows in the period. The local Leather scenario needs this: three of its files have timestamps
-shifted by one hour between 27/03 and 31/10/2022. Converting a scenario to format 1.0 requires
-regular timestamps.
+the timestamps of the first node. Every file must have the same number of rows (`ValueError`
+otherwise); the period `start`–`end` is selected on the first node's timestamps and every node is
+cut at the same rows. Unsorted, duplicated or wrongly spaced timestamps, and nodes whose
+timestamps differ from the first node's, are reported in one `TimestampWarning`
+(`smartcer.data.TimestampWarning`) instead of raising. The local Leather scenario needs this:
+three of its files have timestamps shifted by one hour between 27/03 and 31/10/2022, and a period
+may start or end inside that block. Converting a scenario to format 1.0 requires regular
+timestamps.
 
 ## 5. Units inside SmartCer
 

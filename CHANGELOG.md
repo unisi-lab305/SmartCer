@@ -85,6 +85,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The current step's generation is observed only with `observe_current_step=True` (S7); identical
   episodes give identical rewards (S9); the terminal observation describes the last step (S10);
   `reset(seed)` also seeds the action space (S17)
+- 0.6.2 scenarios whose files have shifted timestamps (Leather) can be split with `start` and
+  `end` anywhere: the period is selected on the first node's timestamps and every node is cut at
+  the same rows; files with different numbers of rows raise `ValueError`
 
 ---
 

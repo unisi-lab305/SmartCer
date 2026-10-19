@@ -72,3 +72,29 @@ def test_leather_idle_matches_v062_hourly_and_annual(leather_idle: dict[str, Any
         assert new[column].to_numpy() == pytest.approx(reference[column].to_numpy(), abs=ABS_TOL), \
             column
         assert new[column].sum() == pytest.approx(reference[column].sum(), abs=ABS_TOL), column
+
+
+def test_leather_split_inside_shifted_block(leather_path: Path) -> None:
+    """
+    Test a split of Leather on 01/06/2022, inside the block where three files are shifted by one
+    hour: both halves load, cover the year without gaps and hold the rows of the whole-year load.
+
+    Args:
+        leather_path: Local Leather scenario.
+    """
+    with pytest.warns(TimestampWarning):
+        year = load_scenario(leather_path)
+    with pytest.warns(TimestampWarning):
+        train = load_scenario(leather_path, end='2022-05-31 23:00')
+    with pytest.warns(TimestampWarning):
+        test = load_scenario(leather_path, start='2022-06-01 00:00')
+
+    assert train.n_steps + test.n_steps == year.n_steps == 8760
+    assert test.timestamps[0] == np.datetime64('2022-06-01T00:00')
+    assert np.array_equal(np.concatenate([train.timestamps, test.timestamps]), year.timestamps)
+    for node_id in year.node_ids:
+        for quantity in ('generation_kwh', 'load_kwh', 'sell_price', 'buy_price'):
+            whole = getattr(year.node(node_id), quantity)
+            halves = np.concatenate([getattr(train.node(node_id), quantity),
+                                     getattr(test.node(node_id), quantity)])
+            assert np.array_equal(halves, whole), (node_id, quantity)
