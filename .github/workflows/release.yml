@@ -101,7 +101,7 @@ jobs:
         TAG_VERSION="${{ steps.tag_version.outputs.version }}"
         # release notes: the CHANGELOG section of this version
         awk -v header="## [$TAG_VERSION]" \
-          'index($0, header) == 1 {found = 1; next} found && /^## \[/ {exit} found' \
+          'index($0, header) == 1 {found = 1; next} found && /^## \[/ {exit} found && $0 != "---"' \
           CHANGELOG.md > release_notes.md
         gh release create "v$TAG_VERSION" dist/* \
           --title "SmartCer $TAG_VERSION" \
