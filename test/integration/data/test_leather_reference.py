@@ -1,6 +1,6 @@
 """
 Leather 2022 with idle batteries: the new loader, nodes and community against the 0.6.2 reference
-values written by `scripts/make_reference_v062.py`.
+values written in phase 0 by `scripts/make_reference_v062.py` (in git history).
 
 Skipped when the local scenario or the reference files are missing (both gitignored).
 """
@@ -45,7 +45,8 @@ def leather_idle(leather_path: Path, local_fixtures_path: Path) -> dict[str, Any
     """
     reference_path = local_fixtures_path / 'leather_2022_community.csv'
     if not reference_path.is_file():
-        pytest.skip('Leather reference missing: run scripts/make_reference_v062.py')
+        pytest.skip('Leather reference missing: run scripts/make_reference_v062.py from commit '
+                    'd878969 (removed in phase 3)')
     # Leather has three nodes with timestamps shifted by one hour (aligned by position as in 0.6.2)
     with pytest.warns(TimestampWarning, match='cartotecnica'):
         community = load_scenario(leather_path, start='2022-01-01 00:00:00',

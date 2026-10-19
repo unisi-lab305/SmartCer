@@ -1,7 +1,8 @@
 """
 Shared fixtures for all tests (unit and integration).
 
-The synthetic scenario `test/fixtures/mini_cer/` is in the 0.6.2 format and has 4 nodes and
+The synthetic scenario `test/fixtures/mini_cer/` (0.6.2 format; `test/fixtures/mini_cer_v1/` is
+the same scenario in the 1.0 format) has 4 nodes and
 48 hourly rows (2022-01-03 00:00 to 2022-01-04 23:00):
 
 - `pv_bat` (producer, battery 20 kWh / 5 kW): generation 10 kWh in hours 8-15, PNRR 0 %;
@@ -17,17 +18,13 @@ All exporting nodes share the sell price 0.10 €/kWh in hours 8-15 of day 1, 0.
 efficiency 0.9.
 """
 
-import collections
 from collections.abc import Callable
 import json
 from pathlib import Path
 import shutil
 from typing import Any, Dict
 
-import numpy as np
 import pytest
-
-from smartcer.cer_env import SmartCer
 
 
 FIXTURES_PATH = Path(__file__).parent / 'fixtures'
@@ -51,20 +48,6 @@ def mini_cer_path() -> Path:
         Path: Folder `test/fixtures/mini_cer/` (read it, do not modify it).
     """
     return MINI_CER_PATH
-
-
-@pytest.fixture
-def mini_cer_copy(tmp_path: Path) -> Path:
-    """
-    Writable copy of the synthetic scenario, for tests that change its configuration or data.
-
-    Args:
-        tmp_path: Pytest temporary directory.
-
-    Returns:
-        Path: Folder of the copy.
-    """
-    return Path(shutil.copytree(MINI_CER_PATH, tmp_path / 'mini_cer'))
 
 
 @pytest.fixture
@@ -121,69 +104,6 @@ def write_scenario(tmp_path: Path) -> Callable[..., Path]:
     return write
 
 
-# =================================
-# Fixtures for the 0.6.2 environment
-# =================================
-
-
-@pytest.fixture
-def v062_run_config() -> Dict[str, Any]:
-    """
-    Run configuration of the 0.6.2 environment covering the whole synthetic scenario.
-
-    Collective `profit` reward with penalty and no reward scaler.
-
-    Returns:
-        Dict[str, Any]: The `cer_config` argument of `smartcer.cer_env.SmartCer`.
-    """
-    return {
-        'simulation': {
-            'start': '2022-01-03 00:00:00',
-            'end': '2022-01-04 23:00:00',
-            'seed': 0,
-        },
-        'reward': {
-            'type': 'profit',
-            'single_agent': False,
-            'constraints': {'penalty': True, 'coefficient': 10.0, 'max_ratio': 0.99},
-            'scaler': {'apply': False},
-        },
-    }
-
-
-@pytest.fixture
-def v062_env(mini_cer_path: Path, v062_run_config: Dict[str, Any]) -> SmartCer:
-    """
-    0.6.2 environment on the synthetic scenario, reset with seed 0.
-
-    Args:
-        mini_cer_path: Path of the synthetic scenario.
-        v062_run_config: Run configuration of the 0.6.2 environment.
-
-    Returns:
-        SmartCer: The environment, ready for its first step.
-    """
-    env = SmartCer(cer_path=str(mini_cer_path), cer_config=v062_run_config)
-    env.reset(seed=0)
-    return env
-
-
-@pytest.fixture
-def v062_zero_actions(v062_env: SmartCer) -> 'collections.OrderedDict[str, np.ndarray]':
-    """
-    Zero (idle) action for every battery of the 0.6.2 environment.
-
-    Args:
-        v062_env: 0.6.2 environment on the synthetic scenario.
-
-    Returns:
-        collections.OrderedDict[str, np.ndarray]: Action dictionary accepted by `SmartCer.step()`.
-    """
-    return collections.OrderedDict(
-        (node_id, np.array([0.0], dtype=np.float32)) for node_id in v062_env.storage_nodes_ids
-    )
-
-
 # =========================
 # Fixtures for local data
 # =========================
@@ -192,13 +112,15 @@ def v062_zero_actions(v062_env: SmartCer) -> 'collections.OrderedDict[str, np.nd
 @pytest.fixture
 def local_fixtures_path() -> Path:
     """
-    Folder of the local reference values (gitignored, written by `scripts/make_reference_v062.py`).
+    Folder of the local reference values (gitignored), written in phase 0 by
+    `scripts/make_reference_v062.py` (removed in phase 3, available in git history).
 
     Returns:
         Path: Folder `test/fixtures/local/`; the test is skipped when it is missing.
     """
     if not LOCAL_FIXTURES_PATH.is_dir():
-        pytest.skip('local reference values missing: run scripts/make_reference_v062.py')
+        pytest.skip('local reference values missing: run scripts/make_reference_v062.py from '
+                    'commit d878969 (removed in phase 3)')
     return LOCAL_FIXTURES_PATH
 
 

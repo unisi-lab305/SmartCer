@@ -1,5 +1,6 @@
 """
-Consistency of the local 0.6.2 reference values written by `scripts/make_reference_v062.py`.
+Consistency of the local 0.6.2 reference values written in phase 0 by
+`scripts/make_reference_v062.py` (removed in phase 3, available in git history).
 
 Skipped when `test/fixtures/local/` is missing (it is gitignored and absent in CI). Phase 2 compares
 the new community functions against the same files.
@@ -32,7 +33,8 @@ def reference(local_fixtures_path: Path) -> Dict[str, Any]:
     csv_path = local_fixtures_path / f'{NAME}_community.csv'
     json_path = local_fixtures_path / f'{NAME}_kpis.json'
     if not (csv_path.is_file() and json_path.is_file()):
-        pytest.skip(f'{NAME} reference files missing: run scripts/make_reference_v062.py')
+        pytest.skip(f'{NAME} reference files missing: run scripts/make_reference_v062.py from '
+                    'commit d878969 (removed in phase 3)')
     return {'community': pd.read_csv(csv_path), 'kpis': json.loads(json_path.read_text())}
 
 

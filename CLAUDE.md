@@ -12,12 +12,11 @@ controls the batteries.
 
 **Status:** version 0.6.2 is being refactored into 1.0.0 following
 [docs/refactor/REFACTOR_v1.md](docs/refactor/REFACTOR_v1.md); progress, deviations and open
-questions are in [docs/refactor/PROGRESS.md](docs/refactor/PROGRESS.md). Phases 0 (infrastructure
-and safety net), 1 (battery) and 2 (nodes, community and loader) are complete: the environment is
-still the 0.6.2 code, covered by characterisation tests and by strict expected-failure tests of its
-known defects; the new 1.0 physics and economics (`smartcer/core/`) and scenario loader
-(`smartcer/data/`) are not used by the 0.6.2 environment yet. Scenario keys:
-[docs/CONFIG.md](docs/CONFIG.md).
+questions are in [docs/refactor/PROGRESS.md](docs/refactor/PROGRESS.md). Phases 0-3 are complete:
+the Gymnasium environment `SmartCer-v1` (`smartcer/gym/`) wraps the 1.0 physics and economics
+(`smartcer/core/`) and the scenario loader (`smartcer/data/`); the 0.6.2 environment and models were
+removed. Still from 0.6.2 until phase 5: `smartcer/cer_metrics/` and `smartcer/storage_controllers/`.
+Scenario and run arguments: [docs/CONFIG.md](docs/CONFIG.md).
 
 **Authoritative formulation:** [docs/FORMULATION.md](docs/FORMULATION.md) defines the physics, the
 economics and the reward of SmartCer 1.0. It prevails over the code and over the papers. Do not
@@ -38,21 +37,25 @@ pip install .             # plain installation
 ```
 
 Python 3.12 or newer is required. Runtime dependencies: `gymnasium`, `numpy`, `pandas`,
-`holidays`, and `tqdm` (used only by the 0.6.2 environment, removed in phase 3).
+`holidays`.
 
-**Environment ID**: `SmartCer-v0`, registered on `import smartcer` (`smartcer/__init__.py`).
+**Environment ID**: `SmartCer-v1`, registered on `import smartcer` (`smartcer/__init__.py` calls
+`smartcer.gym.register_envs()`, idempotent). The `gymnasium.envs` entry point (`__root__` in
+`pyproject.toml`) registers it automatically only with Gymnasium < 1.0, which still loads entry
+points; with Gymnasium >= 1.0 import `smartcer` first or use `gym.make('smartcer:SmartCer-v1', ...)`.
 
 ```python
-from smartcer.cer_env import SmartCer
+import gymnasium as gym
+import smartcer
 
-env = SmartCer(cer_path='path/to/scenario', cer_config=run_config)
+env = gym.make('SmartCer-v1', scenario='path/to/scenario', episode_length=168, random_start=True)
 obs, info = env.reset(seed=0)
-obs, reward_list, terminated, truncated, info, done = env.step(actions)   # 0.6.2 signature
+obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
+# direct use: from smartcer.gym import SmartCerEnv; SmartCerEnv('path/to/scenario', ...)
+# 0.6.2 run configuration: SmartCerEnv.from_v062_config(cer_path, cer_config)
 ```
 
-The 0.6.2 `step()` is not Gymnasium-compliant (defect S3): it returns 6 items, the reward is a list
-`[reward, penalty, signal]` and `truncated` is `None`. See `test/conftest.py` for a complete
-`cer_config` and `README.md` for the 0.6.2 usage example.
+Arguments: `docs/CONFIG.md` section 6.
 
 ## Development Commands
 
@@ -75,10 +78,10 @@ pre-commit run --all-files  # manual run
 Pre-commit hooks fix trailing whitespace and end-of-file newlines, validate YAML, JSON and TOML,
 reject large files and private keys, enforce LF line endings and sort imports with Ruff.
 
-**Reference values of 0.6.2:** `python scripts/make_reference_v062.py` runs 0.6.2 on the local
-Leather 2022 scenario with idle batteries (about 1 minute) and writes the hourly community series
-and the annual KPIs to `test/fixtures/local/` (gitignored). The script is deleted in phase 3; its
-outputs stay.
+**Reference values of 0.6.2:** `test/fixtures/local/` (gitignored) holds the hourly community series
+and the annual KPIs of 0.6.2 on the local Leather 2022 scenario with idle batteries. They were
+written in phase 0 by `scripts/make_reference_v062.py`, removed in phase 3 with the 0.6.2 modules
+it needs (run it from commit `d878969` to regenerate the files).
 
 ## Claude Code Commands
 
@@ -141,8 +144,8 @@ Five slash commands are available in `.claude/commands/`:
   2. Integration tests (`make test-integration`)
   3. Coverage report (`make test-coverage`), uploaded as an artifact (HTML + XML)
   4. Builds the wheel, installs it in a clean virtual environment and imports `smartcer`,
-     `smartcer.cer_env`, `smartcer.core` and `smartcer.data` from outside the repository (guards
-     defect S1, missing subpackages)
+     `smartcer.core`, `smartcer.data`, `smartcer.gym` and `smartcer.storage_controllers` from
+     outside the repository (guards defect S1, missing subpackages)
 - **View results**: `https://github.com/unisi-lab305/SmartCer/actions`
 
 **GitHub Release** (`.github/workflows/release.yml`):
@@ -194,7 +197,7 @@ Git tags mark released versions (`vX.Y.Z`). `v0.6.2` marks the code before the r
 ```
 SmartCer/
 ├── smartcer/                       # package (0.6.2 code)
-│   ├── __init__.py                 # __version__, registration of SmartCer-v0
+│   ├── __init__.py                 # __version__, registration of SmartCer-v1
 │   ├── core/                       # 1.0 physics and economics, no Gymnasium import
 │   │   ├── storage/                # base.py (StorageSystem), battery.py (Battery, BatteryStep)
 │   │   ├── nodes/                  # node.py (Node, NodeStep, NODE_TYPES)
@@ -203,14 +206,11 @@ SmartCer/
 │   │                               # (WelfareBreakdown), community.py (Community, CommunityStep)
 │   ├── data/                       # schema.py (parse_config, ScenarioConfig, TimestampWarning),
 │   │                               # loader.py (load_scenario, read_config)
-│   ├── cer_env.py                  # SmartCer environment (gym.Env)
-│   ├── cer_utils.py                # node loader, OHESpace, energy trade, TIP, CSV and JSON export
-│   ├── cer_models/                 # node_models.py (Node, Producer, Consumer, Prosumer),
-│   │                               # energy_models.py (StorageSystem, Battery)
-│   ├── cer_reward/                 # reward.py (Reward), scaler.py (RewardScaler)
-│   ├── cer_preprocessing/          # preprocessing.py (encoders by operator overloading)
-│   ├── cer_metrics/                # scores.py (compute_kpis), KPI.md
-│   ├── storage_controllers/        # abc_controller.py, rbc_controller.py (StandardRBC)
+│   ├── gym/                        # __init__.py (register_envs, ENV_ID), cer_env.py (SmartCerEnv),
+│   │   │                           # run_config.py (map_v062_run_config)
+│   │   └── observation/            # encoders.py, schema.py (ObservationBuilder, preset meco)
+│   ├── cer_metrics/                # 0.6.2: scores.py (compute_kpis), KPI.md (until phase 5)
+│   ├── storage_controllers/        # 0.6.2: abc_controller.py, rbc_controller.py (until phase 5)
 │   └── cer_data/                   # local scenarios (gitignored, read-only)
 ├── test/
 │   ├── conftest.py                 # shared fixtures, description of the synthetic scenario
@@ -219,18 +219,18 @@ SmartCer/
 │   ├── fixtures/local/             # 0.6.2 reference values on Leather (gitignored)
 │   ├── unit/core/                  # layer rules of smartcer/core/; storage/, nodes/, community/
 │   ├── unit/data/                  # schema and loader on small scenarios written to tmp_path
-│   ├── unit/v062/                  # TIP coefficient; known defects S2, S4, S5, S6
-│   ├── integration/data/           # mini_cer in both formats; Leather vs the 0.6.2 reference
-│   └── integration/v062/           # characterisation; known defects S3, S7-S10; reference values
-├── scripts/make_reference_v062.py  # writes test/fixtures/local/ (deleted in phase 3)
+│   ├── unit/gym/                   # observation, run configuration, actions and arguments
+│   ├── unit/v062/                  # known defect S6 of the 0.6.2 controller (until phase 5)
+│   ├── integration/data/           # mini_cer in both formats; Leather and the 0.6.2 reference
+│   └── integration/gym/            # check_env (Gymnasium, SB3), episodes, timing, SAC (slow)
 ├── docs/                           # FORMULATION.md, CONFIG.md, refactor/REFACTOR_v1.md,
 │                                   # refactor/PROGRESS.md
 ├── .claude/commands/               # slash commands
 └── .github/workflows/              # ci.yml, release.yml
 ```
 
-The target 1.0 structure (`smartcer/core/`, `smartcer/data/`, `smartcer/gym/`, ...) is in
-`docs/refactor/REFACTOR_v1.md` section 4; add it here only as it is created.
+The rest of the target 1.0 structure (rewards, controllers, tracking, metrics, forecasts,
+oracle) is in `docs/refactor/REFACTOR_v1.md` section 4; add it here only as it is created.
 
 ## Code Architecture
 
@@ -300,43 +300,49 @@ Node(node_id, node_type, delta_t, generation_kwh, load_kwh, sell_price, buy_pric
 - Loader: 1.0 scenarios are validated strictly; 0.6.2 scenarios are aligned by position and their
   timestamp irregularities raise a `TimestampWarning` (docs/CONFIG.md section 4).
 
-### 0.6.2 data flow
+### Environment (1.0), `smartcer/gym/`
 
 ```
-SmartCer (gym.Env), smartcer/cer_env.py
-├── node_loader() reads <scenario>/config.json and one CSV per node
-│   └── Producer / Consumer / Prosumer (Node), each with an optional Battery (StorageSystem)
-├── step(actions: OrderedDict[node_id, np.ndarray (1,)])
-│   1. Node.set_storage(action): energy = action × rated_power → Battery.charge(energy, production)
-│   2. get_energy_trade(): node export and import; set_tip_and_costs(): TIP coefficient, revenue,
-│      expense per node
-│   3. community: exported, imported, shared = min(exported, imported),
-│      potential TIP = Σ coefficient × export, actual TIP = shared / exported × potential TIP
-│   4. Reward: 'energy' or 'profit', per node (single_agent=True) or collective, minus penalty,
-│      optional RewardScaler
-├── get_sim_results() / save_results(): community table, one table per node, KPI JSON, run JSON
-└── compute_baselines(): idle batteries and StandardRBC
+SmartCerEnv(scenario, start=None, end=None, episode_length=None, random_start=False,
+            observe_current_step=True, observation='meco', reward='welfare',
+            penalty_coefficient=10.0, seed=None)
+    - community (Community), storage_node_ids (action order), obs_layout (name → slice)
+    - action_space Box(-1, 1, (N,), float32); observation_space flat Box (ObservationBuilder)
+    - reset(seed, options) → (obs, info): batteries to S^ini, first step 0 or random (np_random),
+      seeds the action space
+    - step(action) → (obs, reward, terminated=False, truncated, info)
+        clip action to [-1, 1] (no penalty; non-finite → ValueError) → Community.step(t, action)
+        reward = W_t - σ K_t; truncated on the last step of the episode, whose observation is
+        the terminal one (same step, new state); step() then needs a reset
+    - from_v062_config(cer_path, cer_config) → SmartCerEnv (0.6.2 run keys, DeprecationWarning)
 ```
 
-**Scenario format (0.6.2):** `config.json` with `Producers`, `Consumers`, `Prosumers`; each node has
-`Type`, optional `Photovoltaic` (`pv_power`, `pnrr`, `tip_base`, `tip_threshold`, `fi_zone`, `pz`)
-and optional `Storage` (`capacity`, `rated_power`, `soc_min` as a fraction, `efficiency`, `alfa`,
-`beta`). CSV files in `nodes/<type>s/<base>.csv` with a `datetime` column
-(`%Y-%m-%d %H:%M:%S`) and `production`, `consumption`, `price_exp`, `price_imp` as required by the
-node type; a node id with a `_N` suffix reuses the CSV of its base name (`house_1` → `house.csv`).
+- `info` of a step: `t`, `timestamp`, `reward` (`welfare`, `penalty` = σK, `total`), `welfare`
+  (breakdown), `penalty` (K_t), `action` (after the [-1, 1] clip), `nodes` (node id → NodeStep
+  fields). `info['privileged']` is reserved for phase 7.
+- Observation preset `meco` (`smartcer/gym/observation/schema.py`): `time/month`, `time/hour`
+  (sin, cos), `time/day_of_week` (one-hot); prices as `price/sell`, `price/buy` if all nodes share
+  them, else `<node>/sell_price`, `<node>/buy_price` per battery node; per battery node
+  `<node>/generation`, `<node>/load` (min-max over the period), `<node>/soc` (scaled to
+  [S^min, S^max]), `<node>/a_lower`, `<node>/a_upper`. Static features are precomputed for every
+  step; only SoC and bounds are computed in `step()`. Bounds of constant features are widened by 1
+  so that low < high.
+- `observe_current_step=False`: g and l of step t - 1 (0 at the first row of the data) and A^upper
+  without the charge cap; the clipping still uses the full bounds.
 
 **Action convention:** one action per battery in [-1, 1]; positive charges, negative discharges.
 
-**Known defects** S1-S18 of 0.6.2 are listed in `docs/refactor/REFACTOR_v1.md` section 2; S2-S10
-are reproduced by tests marked `xfail(strict=True)` in `test/*/v062/test_known_defects.py`.
+**Known defects** S1-S18 of 0.6.2 are listed in `docs/refactor/REFACTOR_v1.md` section 2; their
+regression tests on the new API are named `test_s<n>_*`. Only S6 (0.6.2 rule-based controller) is
+still an `xfail(strict=True)` test, in `test/unit/v062/test_known_defects.py`, until phase 5.
 
 ## Testing
 
 - Layout: `test/unit/` (one component) and `test/integration/` (several components, full
   episodes); each test module sets `pytestmark = pytest.mark.unit` or `pytest.mark.integration`
 - Markers (strict): `unit`, `integration`, `slow`
-- Warnings are errors except `DeprecationWarning` and `PendingDeprecationWarning`; the only other
-  ignored warning is the `SyntaxWarning` of defect S14, until `node_models.py` is removed
+- Warnings are errors except `DeprecationWarning` and `PendingDeprecationWarning`; run the
+  Gymnasium checker on `gym.make(ENV_ID, ...).unwrapped` (an env without a spec makes it warn)
 - `--import-mode=importlib`: no `__init__.py` in test folders; same-named test files in different
   folders do not clash
 - Synthetic scenario `test/fixtures/mini_cer/` (0.6.2 format) and `test/fixtures/mini_cer_v1/`

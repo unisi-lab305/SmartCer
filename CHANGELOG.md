@@ -18,8 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New battery model `smartcer.core.Battery` following `docs/FORMULATION.md`: separate charge and
   discharge power limits and efficiencies on the node side, explicit time step, dynamic action
   bounds derived from the dynamics, clipping with a constraint penalty, self-discharge (defined
-  per hour) and storage usage cost; the state of charge never leaves its limits (0.6.2 defect S4). Not yet used by the
-  0.6.2 environment
+  per hour) and storage usage cost; the state of charge never leaves its limits (0.6.2 defect S4)
 - `Battery.from_config` reads storage sections in the 1.0 and the 0.6.2 format
 - Scenario format 1.0 (`format_version`, `delta_t`, `units` in kWh per step or kW, `uniform` or
   `tip` incentive, explicit CSV paths, 1.0 storage keys) documented in `docs/CONFIG.md`
@@ -31,11 +30,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Nodes support an explicit time step and consumers with a battery (0.6.2 defects S5 and S8); the
   charge rule `production` or `surplus` is set per battery with `charge_limit`; a consumer's optional
   `sell_price` column pays the energy its battery exports
+- Gymnasium environment `SmartCerEnv`, registered as `SmartCer-v1`: one continuous action per
+  battery (`Box(-1, 1)`), reward welfare minus σ times the mean constraint penalty, flat
+  observation with a named layout (`obs_layout`, preset `meco`), episodes of configurable length
+  with optional random start, option `observe_current_step` for the information timing
+- `SmartCerEnv.from_v062_config` to run 0.6.2 run configurations (`simulation`, `reward` keys)
 
 ### Changed
 
 - Python 3.12 or newer is now required
 - `holidays` is now a runtime dependency
+- `import smartcer` registers `SmartCer-v1`; the `gymnasium.envs` entry point registers it with
+  Gymnasium < 1.0
+- `tqdm` is no longer a dependency
 
 ### Deprecated
 
@@ -45,10 +52,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   timestamp irregularities are reported in a `TimestampWarning` and rows are aligned by position
   as in 0.6.2
 
+### Removed
+
+- Environment `SmartCer-v0` and the 0.6.2 modules `smartcer.cer_env`, `smartcer.cer_utils`,
+  `smartcer.cer_models`, `smartcer.cer_reward` (with the running reward scaler) and
+  `smartcer.cer_preprocessing`
+
 ### Fixed
 
 - `pip install .` now installs all subpackages (previously `smartcer.cer_env` failed to import
   with `ModuleNotFoundError: smartcer.storage_controllers`)
+- The environment is Gymnasium-compliant: five-item `step()`, float reward, boolean `truncated`,
+  observation inside its space, `check_env` of Gymnasium and Stable-Baselines3 pass (0.6.2 defect
+  S3)
+- The 0.6.2 reward type `cost` is accepted when mapping a 0.6.2 run configuration (S2)
+- The current step's generation is observed only with `observe_current_step=True` (S7); identical
+  episodes give identical rewards (S9); the terminal observation describes the last step (S10);
+  `reset(seed)` also seeds the action space (S17)
 
 ---
 
