@@ -1,0 +1,118 @@
+name: GitHub Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v7
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v7
+      with:
+        python-version: '3.12'
+
+    - name: Extract version from tag
+      id: tag_version
+      run: |
+        TAG=${GITHUB_REF#refs/tags/v}
+        echo "version=$TAG" >> $GITHUB_OUTPUT
+        echo "Extracted version: $TAG"
+
+    - name: Validate version consistency
+      run: |
+        TAG_VERSION="${{ steps.tag_version.outputs.version }}"
+
+        # extract version from pyproject.toml
+        PYPROJECT_VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+
+        # extract version from __init__.py
+        INIT_VERSION=$(grep "^__version__ = " smartcer/__init__.py | sed "s/__version__ = '\(.*\)'/\1/")
+
+        echo "Tag version: $TAG_VERSION"
+        echo "pyproject.toml version: $PYPROJECT_VERSION"
+        echo "__init__.py version: $INIT_VERSION"
+
+        if [ "$TAG_VERSION" != "$PYPROJECT_VERSION" ]; then
+          echo "ERROR: tag version ($TAG_VERSION) does not match pyproject.toml version ($PYPROJECT_VERSION)"
+          exit 1
+        fi
+
+        if [ "$TAG_VERSION" != "$INIT_VERSION" ]; then
+          echo "ERROR: tag version ($TAG_VERSION) does not match __init__.py version ($INIT_VERSION)"
+          exit 1
+        fi
+
+        echo "Version consistency check passed"
+
+    - name: Validate CHANGELOG entry
+      run: |
+        TAG_VERSION="${{ steps.tag_version.outputs.version }}"
+
+        if ! grep -q "^## \[$TAG_VERSION\]" CHANGELOG.md; then
+          echo "ERROR: CHANGELOG.md does not contain an entry for version $TAG_VERSION"
+          echo "Please add release notes before releasing"
+          exit 1
+        fi
+
+        echo "CHANGELOG.md contains an entry for version $TAG_VERSION"
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .[all]
+
+    - name: Run unit tests
+      run: make test-unit
+
+    - name: Run integration tests
+      run: make test-integration
+
+    - name: Install build tools
+      run: |
+        python -m pip install --upgrade build twine
+
+    - name: Clean previous builds
+      run: |
+        rm -rf dist/ build/ *.egg-info
+
+    - name: Build distribution packages
+      run: |
+        python -m build
+        ls -lh dist/
+
+    - name: Validate packages with twine
+      run: |
+        twine check dist/*
+
+    - name: Create GitHub Release
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        TAG_VERSION="${{ steps.tag_version.outputs.version }}"
+        # release notes: the CHANGELOG section of this version
+        awk -v header="## [$TAG_VERSION]" \
+          'index($0, header) == 1 {found = 1; next} found && /^## \[/ {exit} found && $0 != "---"' \
+          CHANGELOG.md > release_notes.md
+        gh release create "v$TAG_VERSION" dist/* \
+          --title "SmartCer $TAG_VERSION" \
+          --notes-file release_notes.md
+
+    # enable after 11/11/2026 (D11): publication to PyPI
+    # requires the PYPI_API_TOKEN repository secret
+    #
+    # - name: Publish to PyPI
+    #   env:
+    #     TWINE_USERNAME: __token__
+    #     TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+    #   run: |
+    #     twine upload dist/*
