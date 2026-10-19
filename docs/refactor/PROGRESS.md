@@ -336,3 +336,110 @@ phase, in the format of section 9 of the brief, newest last.
   `cer_azienda/azienda.csv`.
 - Phase 2 pull request merged into `main` on Leonardo's request (see the phase 3 section).
 
+## Phase 3 · Gymnasium environment – 2026-10-19
+
+- Branch and commits: phase 2 follow-ups (`b499e92` feat(data): read the optional sell price of
+  consumers, `3084b3e` docs(formulation): state the 0.6.2 reading of the tip incentive, `48b4498`
+  docs(refactor): record phase 2 answers and the Leather timestamp finding) were merged with phase
+  2 (pull request #4, merge commit `d878969`). `refactor/v1-phase-3-gym-env`, created from `main`
+  at `d878969`, pushed to `origin`; pull request opened, not merged (Leonardo reviews and merges
+  phases 3 and 7).
+  - `39efa84` feat(gym): add the SmartCer-v1 Gymnasium environment with the meco observation
+  - `5c3aa69` test(gym): add compliance, episode, timing, action and SAC tests of SmartCer-v1
+  - `44aaf48` refactor!: remove the 0.6.2 environment, SmartCer-v0 and the 0.6.2 models
+  - docs(refactor): add phase 3 progress report (this section)
+- Done:
+  1. `smartcer/gym/cer_env.py`, `SmartCerEnv`: `reset(seed=None, options=None) -> (obs, info)`,
+     `step(action) -> (obs, reward, terminated, truncated, info)` with a float reward
+     R_t = W_t − σK_t (σ = `penalty_coefficient`, default 10). It wraps the phase 2 `Community`.
+  2. Action space `Box(-1, 1, (N,), float32)` in `storage_node_ids` order (public). As answered on
+     2026-10-19: actions are clipped to [−1, 1] before the nodes without penalty, non-finite
+     actions or a wrong shape raise `ValueError`; the nodes then clip to the dynamic bounds with
+     the section 7 penalty.
+  3. `observe_current_step` (default True) as in FORMULATION section 12; with False the observed g
+     and l are those of step t − 1, 0 at the first row of the data (answer of 2026-10-19), and the
+     observed A^upper is computed without the charge cap.
+  4. Observation: flat `Box` with `obs_layout` (feature name → slice), preset `meco`
+     (`smartcer/gym/observation/`): `time/month`, `time/hour` (sin, cos), `time/day_of_week`
+     (one-hot); prices not normalised, as `price/sell`, `price/buy` when every seller and every
+     buyer share one series, otherwise `<node>/sell_price`, `<node>/buy_price` in each battery
+     node's block (synthetic scenario and Leather: per node); per battery node `<node>/generation`
+     and `<node>/load` min-max over the period, `<node>/soc` scaled to [S^min, S^max],
+     `<node>/a_lower`, `<node>/a_upper`. Step-independent features are precomputed.
+  5. `info`: `t`, `timestamp`, reward components (`welfare`, `penalty` = σK, `total`), welfare
+     breakdown, K_t, the clipped action and, per node, the `NodeStep` fields (reward components
+     revenue, cost, storage cost and k, state of charge, requested and applied action, bounds).
+     `info['privileged']` is left to phases 4 and 7.
+  6. Episodes: `episode_length` (default the whole period), `random_start` with `self.np_random`;
+     every step is controlled and the episode ends on its last valid step with `truncated=True`
+     (`terminated` is always False); the terminal observation is built for that step with the new
+     state; `reset(seed)` also seeds the action space; `seed` argument for the first reset.
+  7. Registration of `SmartCer-v1` on `import smartcer` (idempotent `register_envs()`) and through
+     the `gymnasium.envs` entry point (`__root__`); `SmartCer-v0` removed. Removed:
+     `smartcer/cer_env.py`, `cer_utils.py`, `cer_models/`, `cer_reward/`, `cer_preprocessing/`,
+     `scripts/make_reference_v062.py` (its outputs in `test/fixtures/local/` stay), the 0.6.2
+     characterisation and known-defect tests (replaced by regression tests on the new API) and
+     `tqdm`. `smartcer/storage_controllers/abc_controller.py`: the `cer_models` import moved under
+     `TYPE_CHECKING` (answer of 2026-10-19), so that module and the S6 xfail test live until
+     phase 5. The S14 warning filter is gone with `node_models.py`.
+  8. `SmartCerEnv.from_v062_config(cer_path, cer_config)` maps the 0.6.2 run keys of brief section
+     6 (period, seed, `reward.type` 'profit' or 'cost' with `single_agent` False → welfare,
+     `reward.constraints.coefficient` → σ, 0 if the penalty is off) with a DeprecationWarning
+     listing the unused keys; 'energy' and `single_agent` True raise `ValueError` until the
+     rewards of phase 4.
+  9. Regression tests replacing the 0.6.2 xfail tests: S2 (`test_s2_reward_type_cost_is_mapped_to_
+     welfare`), S3 (`test_s3_gym_make_reset_and_step`, `test_s3_spaces_are_flattenable`, both
+     `check_env`), S7 (`test_s7_causal_observation_hides_current_generation`), S9
+     (`test_s9_identical_episodes_give_identical_rewards`), S10
+     (`test_s10_terminal_observation_comes_from_last_step`), S17 (`test_reset_seeds_the_action_
+     space`); S4, S5, S8 since phases 1-2; S6 stays an xfail until phase 5.
+  10. `docs/CONFIG.md` section 6 (environment arguments and 0.6.2 run keys), `CLAUDE.md`,
+      `CHANGELOG.md`; the CI wheel check imports `smartcer.core`, `smartcer.data`, `smartcer.gym`
+      and `smartcer.storage_controllers`.
+- Acceptance checks:
+  - `gymnasium.utils.env_checker.check_env` (on `gym.make(...).unwrapped`, fixed start and random
+    start with `observe_current_step=False`) and the Stable-Baselines3 `check_env(warn=True)` →
+    passed with warnings as errors.
+  - `gymnasium.make('SmartCer-v1', scenario=...)` with the passive checker, reset and step → passed.
+  - SAC (Stable-Baselines3 2.8, CPU) 2,000 steps on the synthetic scenario, test marked `slow` with
+    `importorskip` → passed, 67 s locally, in CI within the 2 min 39 s job.
+  - Two runs with the same seed and sampled actions (random start, 12-step episodes) give identical
+    trajectories; a different seed does not → passed.
+  - `observe_current_step` True and False: observed generation, load and A^upper of pv_bat at
+    t = 0, 8, 9 (True: g_t, A^upper with cap 0 then 1; False: g_{t−1} with 0 at the first row,
+    A^upper 1 without cap, applied bound still with the cap, k = 1 for a night charge) → passed.
+  - Reward at 10:00 of day 1 with actions (−0.5, 0.5): W = 1.125 €, K = 0.25, R = −1.375 (phase 2
+    hand values) → passed.
+  - `make test` → 168 passed, 1 xfailed (S6) in 106 s (SAC 67 s); `make test-coverage` → 92 %,
+    `smartcer/gym/` 96-100 %. CI → green, run 39228214100 on `44aaf48`: unit 137 passed,
+    1 xfailed; integration 27 passed, 4 skipped (local data); wheel import OK.
+  - Clean virtual environment (Python 3.12.13, Gymnasium 1.4.0): wheel installed without `tqdm`,
+    `import smartcer` registers `SmartCer-v1`, `SmartCer-v0` absent.
+  - Informative: Leather, one year of random actions through the environment, 5.1 s (0.6.2: 43 s);
+    observation of 39 features.
+- Deviations from the brief and why:
+  - Gymnasium ≥ 1.0 (1.4.0 here) no longer loads `gymnasium.envs` entry points, so the entry point
+    alone would not register the environment: it is declared (named `__root__`, for Gymnasium
+    < 1.0) and `import smartcer` registers `SmartCer-v1`; `gym.make('smartcer:SmartCer-v1')` imports
+    the package itself.
+  - Observation bounds of constant features (e.g. a producer's buy price of 0, a fixed tariff) are
+    widened to [v, v + 1], because Gymnasium's checker rejects low == high.
+  - Every battery node's price block holds both prices, also the one its type does not use (0 for
+    a producer's buy price), so that every battery block has the same layout.
+  - The min-max scaling of g and l uses the environment's whole period; fitting on a declared
+    training window is phase 4.
+  - `info['privileged']` is not created yet: phase 4 creates it (empty) and phase 7 fills it.
+  - The 0.6.2 run-key mapping (brief section 6) is implemented here, with the environment
+    arguments it maps to; 0.6.2 rewards other than the collective profit wait for phase 4.
+  - `smartcer/storage_controllers/abc_controller.py` changed (import guard), as answered.
+  - `test/integration/v062/test_reference_v062.py` (consistency of the local reference files) was
+    kept and moved to `test/integration/data/test_reference_files.py`.
+- Open questions for Leonardo:
+  1. Per-node price blocks: keep both prices for every battery node (uniform layout, one constant
+     feature for producers), or drop the price a node type does not use?
+  2. When the rewards of phase 4 exist, should `from_v062_config` map the 0.6.2 types 'energy' and
+     `single_agent` True to them, or keep raising (the brief maps only the collective profit)?
+  3. `README.md` now describes the removed 0.6.2 API (`SmartCer-v0`, `smartcer.cer_env`); it is
+     rewritten in phase 8 as agreed — tell me if it should get a short notice earlier.
+- Ready for phase 4: yes, after the review and merge of the phase 3 pull request.
+
