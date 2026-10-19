@@ -39,12 +39,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `smartcer.gym.rewards`, selected with `reward`; `reward_per_node=True` reports one reward per
   battery node in `info['reward']['nodes']` and returns their sum
 - Observation preset `extended`: Italian holiday flag, totals of generation and load of the nodes
-  without a battery, optional `lookback` of generation and load per battery node, and a section
-  reserved for forecasts
+  without a battery and optional `lookback` of generation and load per battery node
 - `MinMaxNormalizer`: generation and load are scaled with bounds fitted on a declared training
   window (`normalizer_window`, default the whole period), saved to and loaded from JSON
   (`env.normalizer.save(path)`, `normalizer=path`)
-- `info['privileged']` (empty) in the reset and step info, reserved for the critic's data
+- `info['privileged']` in the reset and step info, with data for the critic only about the step of
+  the returned observation: the oracle action and state of charge (`oracle`) and the true values
+  of the forecast steps (`forecast`); empty without them
 - `info['obs_clipped']` in the reset and step info: the number of observation values clipped to
   [0, 1] because they lie outside the normaliser's training range
 - Baseline controllers in `smartcer.gym.controllers`: `NaiveController` (idle batteries) and
@@ -63,6 +64,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `SmartCerEnv.run_config()`, `SmartCerEnv.current_step` and `SmartCerEnv.scenario_path`
 - Step benchmark `benchmarks/bench_step.py` (`make bench`): whole-period episodes with random
   actions, time per episode and per step
+- Forecast providers in `smartcer.forecasts` (`ForecastProvider` protocol, `PerfectForecast`):
+  with `forecast='perfect'` (or a provider) and `forecast_horizon` H the observation gets the
+  forecasts of generation and load of every battery node for the next H steps
+  (`forecast/<node>/<quantity>`), scaled like the current values; episodes stop H steps before the
+  end of the data and the provider is reset with the environment's random generator
+- MILP oracle in `smartcer.oracle`: `OracleProvider` reads the optimal battery trajectories of an
+  oracle folder (`trajectory.csv`, optional daily `objective.csv`; provisional format, parsed by
+  the single adapter `read_oracle`) and computes the optimal actions; environment argument
+  `oracle`
+- `ReplayController` (`'replay'`) plays the oracle actions; `check_replay` replays them over the
+  whole period, checks that no step is penalised and that the welfare matches the MILP objective
+  within a relative tolerance (default 1e-3), and writes a per-day comparison
 
 ### Changed
 

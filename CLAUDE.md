@@ -12,10 +12,12 @@ controls the batteries.
 
 **Status:** version 0.6.2 is being refactored into 1.0.0 following
 [docs/refactor/REFACTOR_v1.md](docs/refactor/REFACTOR_v1.md); progress, deviations and open
-questions are in [docs/refactor/PROGRESS.md](docs/refactor/PROGRESS.md). Phases 0-6 are complete:
+questions are in [docs/refactor/PROGRESS.md](docs/refactor/PROGRESS.md). Phases 0-7 are complete:
 the Gymnasium environment `SmartCer-v1` (`smartcer/gym/`, with its rewards, observation presets,
 baseline controllers, results tracking and KPIs) wraps the 1.0 physics and economics
-(`smartcer/core/`) and the scenario loader (`smartcer/data/`); all 0.6.2 modules were removed.
+(`smartcer/core/`) and the scenario loader (`smartcer/data/`); forecast providers
+(`smartcer/forecasts/`) feed the observation and the MILP oracle (`smartcer/oracle/`, provisional
+file format) feeds `info['privileged']` and the replay check; all 0.6.2 modules were removed.
 One year of Leather takes about 3 s (`make bench`). Scenario and run arguments:
 [docs/CONFIG.md](docs/CONFIG.md).
 
@@ -54,6 +56,8 @@ obs, info = env.reset(seed=0)
 obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
 # direct use: from smartcer.gym import SmartCerEnv; SmartCerEnv('path/to/scenario', ...)
 # 0.6.2 run configuration: SmartCerEnv.from_v062_config(cer_path, cer_config)
+# forecasts and oracle: SmartCerEnv(scenario, forecast='perfect', forecast_horizon=12,
+#                                   oracle='path/to/oracle_folder')
 ```
 
 Arguments: `docs/CONFIG.md` section 6.
@@ -147,9 +151,9 @@ Five slash commands are available in `.claude/commands/`:
   2. Integration tests (`make test-integration`)
   3. Coverage report (`make test-coverage`), uploaded as an artifact (HTML + XML)
   4. Builds the wheel, installs it in a clean virtual environment and imports `smartcer`,
-     `smartcer.core`, `smartcer.data`, `smartcer.gym`, `smartcer.gym.controllers`,
-     `smartcer.gym.metrics` and `smartcer.gym.tracking` from outside the repository (guards
-     defect S1, missing subpackages)
+     `smartcer.core`, `smartcer.data`, `smartcer.forecasts`, `smartcer.oracle`, `smartcer.gym`,
+     `smartcer.gym.controllers`, `smartcer.gym.metrics` and `smartcer.gym.tracking` from outside
+     the repository (guards defect S1, missing subpackages)
 - **View results**: `https://github.com/unisi-lab305/SmartCer/actions`
 
 **GitHub Release** (`.github/workflows/release.yml`):
@@ -210,6 +214,10 @@ SmartCer/
 │   │                               # (WelfareBreakdown), community.py (Community, CommunityStep)
 │   ├── data/                       # schema.py (parse_config, ScenarioConfig, TimestampWarning),
 │   │                               # loader.py (load_scenario, read_config)
+│   ├── forecasts/                  # base.py (ForecastProvider protocol), perfect.py
+│   │                               # (PerfectForecast), __init__.py (FORECAST_PROVIDERS)
+│   ├── oracle/                     # provider.py (read_oracle adapter, OracleData,
+│   │                               # OracleProvider)
 │   ├── gym/                        # __init__.py (register_envs, ENV_ID), cer_env.py (SmartCerEnv),
 │   │   │                           # run_config.py (map_v062_run_config)
 │   │   ├── observation/            # encoders.py, normalizers.py (MinMaxNormalizer), schema.py
@@ -218,8 +226,8 @@ SmartCer/
 │   │   │                           # (welfare, profit, energy), config.py (REWARD_REGISTRY,
 │   │   │                           # make_reward)
 │   │   ├── controllers/            # base.py (Controller), naive.py (NaiveController), rbc.py
-│   │   │                           # (RBCController), baselines.py (CONTROLLERS, run_episode,
-│   │   │                           # compute_baselines)
+│   │   │                           # (RBCController), replay.py (ReplayController), baselines.py
+│   │   │                           # (CONTROLLERS, run_episode, compute_baselines, check_replay)
 │   │   ├── tracking/               # tracker.py (ResultsTracker, TrackResults wrapper),
 │   │   │                           # callback.py (ResultsCallback, Stable-Baselines3)
 │   │   └── metrics/                # kpi.py (compute_kpis), fit_score.py (fit_score,
@@ -232,13 +240,16 @@ SmartCer/
 │   ├── fixtures/local/             # 0.6.2 reference values on Leather (gitignored)
 │   ├── unit/core/                  # layer rules of smartcer/core/; storage/, nodes/, community/
 │   ├── unit/data/                  # schema and loader on small scenarios written to tmp_path
+│   ├── unit/forecasts/             # PerfectForecast
+│   ├── unit/oracle/                # oracle adapter and provider on files written to tmp_path
 │   ├── unit/gym/                   # observation features, normaliser, rewards, run configuration,
-│   │                               # actions and arguments, controllers, tracker, KPIs, Fit Score
+│   │                               # actions and arguments, controllers, tracker, KPIs, Fit Score,
+│   │                               # forecast section and episode window
 │   ├── integration/data/           # mini_cer in both formats; Leather and the 0.6.2 reference
 │   └── integration/gym/            # check_env (Gymnasium, SB3), episodes, rewards, timing,
 │                                   # normaliser window and one year in the space, baselines,
 │                                   # SB3 results callback, performance rules and benchmark,
-│                                   # SAC (slow)
+│                                   # oracle replay (synthetic and DIISM files), SAC (slow)
 ├── benchmarks/                     # bench_step.py (time per step and per episode)
 ├── docs/                           # FORMULATION.md, CONFIG.md, refactor/REFACTOR_v1.md,
 │                                   # refactor/PROGRESS.md
@@ -246,9 +257,7 @@ SmartCer/
 └── .github/workflows/              # ci.yml, release.yml
 ```
 
-Run outputs go to a folder chosen by the caller, e.g. `results/` (gitignored). The rest of the
-target 1.0 structure (forecasts, oracle) is in `docs/refactor/REFACTOR_v1.md` section
-4; add it here only as it is created.
+Run outputs go to a folder chosen by the caller, e.g. `results/` (gitignored).
 
 ## Code Architecture
 
@@ -325,13 +334,14 @@ Node(node_id, node_type, delta_t, generation_kwh, load_kwh, sell_price, buy_pric
 SmartCerEnv(scenario, start=None, end=None, episode_length=None, random_start=False,
             observe_current_step=True, observation='meco', lookback=0, normalizer=None,
             normalizer_window=None, reward='welfare', reward_per_node=False,
-            penalty_coefficient=10.0, seed=None)
+            penalty_coefficient=10.0, forecast=None, forecast_horizon=0, oracle=None, seed=None)
     - community (Community), storage_node_ids (action order), obs_layout (name → slice),
       normalizer (MinMaxNormalizer, `.save(path)`; pass the path as `normalizer` to reuse it),
-      scenario_path, current_step (step of the next action), run_config() (JSON-serialisable)
+      scenario_path, current_step (step of the next action), forecast, forecast_horizon, oracle
+      (OracleProvider or None), run_config() (JSON-serialisable)
     - action_space Box(-1, 1, (N,), float32); observation_space flat Box (ObservationBuilder)
     - reset(seed, options) → (obs, info): batteries to S^ini, first step 0 or random (np_random),
-      seeds the action space
+      seeds the action space, resets the forecast provider with np_random
     - step(action) → (obs, reward, terminated=False, truncated, info)
         clip action to [-1, 1] (no penalty; non-finite → ValueError) → Community.step(t, action)
         → reward calculator (R_t = W_t - σ K_t by default); truncated on the last step of the
@@ -341,7 +351,9 @@ SmartCerEnv(scenario, start=None, end=None, episode_length=None, random_start=Fa
       single_agent True → reward_per_node, 'energy' → reward 'energy')
 ```
 
-- `info` of a step: `t`, `timestamp`, `privileged` (`{}` until phase 7, also in the reset info),
+- `info` of a step: `t`, `timestamp`, `privileged` (also in the reset info; about the step of the
+  returned observation: `{}` without oracle and forecasts, else `t`, `oracle_action` and
+  `oracle_soc` with an oracle, `true_future` in kWh with forecasts),
   `obs_clipped` (values of the returned observation clipped to [0, 1], also in the reset info),
   `reward` (`type`, `main`, `penalty` = weighted penalty, `total` = R_t, and `nodes` with
   `reward_per_node`), `welfare` (breakdown), `penalty` (K_t), `action` (after the [-1, 1] clip),
@@ -359,10 +371,12 @@ SmartCerEnv(scenario, start=None, end=None, episode_length=None, random_start=Fa
   `<node>/generation`, `<node>/load`, `<node>/soc` (scaled to [S^min, S^max]), `<node>/a_lower`,
   `<node>/a_upper`. Preset `extended` adds `time/holiday` (Italian national holidays only),
   `community/generation`, `community/load` (totals of the nodes without a battery) and, with
-  `lookback` L, `<node>/generation_lookback`, `<node>/load_lookback` (L values, most recent first);
-  the `forecast` section is empty until phase 7. Static features are precomputed for every step;
-  only SoC and bounds are computed in `step()`. Bounds of constant features are widened by 1 so
-  that low < high.
+  `lookback` L, `<node>/generation_lookback`, `<node>/load_lookback` (L values, most recent first).
+  Both presets, with `forecast` and H: `forecast/<node>/generation`, `forecast/<node>/load` per
+  battery node (H values by lead time, steps t + 1..t + H, or t..t + H - 1 with
+  `observe_current_step=False`; scaled with the bounds of `<node>/generation`, `<node>/load`).
+  Static features are precomputed for every step; only SoC, bounds and forecasts are computed in
+  `step()`. Bounds of constant features are widened by 1 so that low < high.
 - Generation and load are min-max scaled with a `MinMaxNormalizer` fitted by `fit_normalizer` on
   the training window `normalizer_window` only, then clipped to [0, 1]
   (`ObservationBuilder.clipped` counts the clipped values per step); JSON via `save`/`load`
@@ -371,6 +385,23 @@ SmartCerEnv(scenario, start=None, end=None, episode_length=None, random_start=Fa
   without the charge cap; the clipping still uses the full bounds.
 
 **Action convention:** one action per battery in [-1, 1]; positive charges, negative discharges.
+
+### Forecasts and oracle, `smartcer/forecasts/`, `smartcer/oracle/`
+
+```
+ForecastProvider (Protocol): reset(rng), get(t, horizon) → {'<node_id>/<quantity>': H values}
+└── PerfectForecast(community)      true generation and load of every node, steps t..t+H-1
+FORECAST_PROVIDERS                  read-only registry: 'perfect' → factory taking the community
+read_oracle(folder) → OracleData    the only function that knows the oracle file format
+OracleProvider(data, community)     .from_folder(folder, community); actions a* (n_steps, N),
+                                    soc_kwh, daily_objective, action(t), soc(t)
+```
+
+- Forecasts enter only the observation, oracle data only `info['privileged']` and the
+  `ReplayController`. With horizon H the episodes use the steps 0..n_steps - H - 1.
+- Oracle folder (provisional format, docs/CONFIG.md section 6): `trajectory.csv` (`datetime`,
+  `node_id`, `p_cha_kw`, `p_dis_kw`, `soc_kwh`, one row per step and battery node) and optional
+  `objective.csv` (`date`, `objective` in €, welfare per day). a* = p^cha / P^cha - p^dis / P^dis.
 
 **Performance rules** (phase 6, `test/integration/gym/test_env_performance.py`): no pandas code
 runs inside `step()` (nodes read preloaded Python floats, timestamps are a numpy array) and the
@@ -382,10 +413,14 @@ observation is built once per step; measure changes with `benchmarks/bench_step.
 Controller(env)                     bound to the unwrapped SmartCerEnv; reads env.community
     - reset(); act(observation, info) → actions for env.current_step, in [-1, 1]
 ├── NaiveController ('naive')       zero actions
-└── RBCController(env, mode='community')   FORMULATION section 13 ([M24] Algorithm 1);
-                                    names 'rbc_node', 'rbc_community'
+├── RBCController(env, mode='community')   FORMULATION section 13 ([M24] Algorithm 1);
+│                                   names 'rbc_node', 'rbc_community'
+└── ReplayController ('replay')     the oracle actions a* (env created with `oracle`)
 CONTROLLERS                         read-only registry: name → factory taking the env
 run_episode(env, controller, seed) → ResultsTracker
+check_replay(env, output_dir, rtol=1e-3, seed=None) → ReplayCheck
+    plays a* over the whole period: passed if K_t ≤ 1e-9 at every step and the cumulative welfare
+    is within rtol of the MILP objective; writes oracle_daily.csv and oracle_replay.json
 compute_baselines(env, output_dir, controllers=('naive', 'rbc_community'), seed=None)
     → {name: KPIs}
     writes <output_dir>/<name>/ (community.csv, nodes/<id>.csv, kpis.json, run_config.json) and
@@ -426,7 +461,11 @@ regression tests on the new API are named `test_s<n>_*`. All 0.6.2 modules and t
   folders do not clash
 - Synthetic scenario `test/fixtures/mini_cer/` (0.6.2 format) and `test/fixtures/mini_cer_v1/`
   (the same in the 1.0 format): round numbers, results computable by hand (see the docstring of
-  `test/conftest.py`); `write_scenario` (conftest) writes small 1.0 scenarios to `tmp_path`
+  `test/conftest.py`); `write_scenario` (conftest) writes small 1.0 scenarios to `tmp_path`;
+  `synthetic_oracle` (conftest) writes an oracle folder of `mini_cer_v1` (random feasible
+  trajectory, its daily welfare as objective)
+- The oracle replay on the DIISM files runs for every `smartcer/cer_data/<scenario>/oracle/`
+  folder and is skipped when there is none
 - Loading the local Leather scenario raises a `TimestampWarning`: expect it with `pytest.warns`
 - Tests on local data (`test/fixtures/local/`, `smartcer/cer_data/`) skip when it is missing; tests
   on optional dependencies use `pytest.importorskip`

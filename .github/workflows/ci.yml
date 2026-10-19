@@ -53,4 +53,4 @@ jobs:
         /tmp/wheel-env/bin/pip install dist/*.whl
         # run outside the repository so that the installed package is imported, not the sources
         cd /tmp
-        /tmp/wheel-env/bin/python -c "import smartcer, smartcer.core, smartcer.data, smartcer.gym, smartcer.gym.controllers, smartcer.gym.metrics, smartcer.gym.tracking; print('Installed smartcer', smartcer.__version__)"
+        /tmp/wheel-env/bin/python -c "import smartcer, smartcer.core, smartcer.data, smartcer.forecasts, smartcer.oracle, smartcer.gym, smartcer.gym.controllers, smartcer.gym.metrics, smartcer.gym.tracking; print('Installed smartcer', smartcer.__version__)"

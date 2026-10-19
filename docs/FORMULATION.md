@@ -197,6 +197,8 @@ A charge energy x gives the action x / (P^cha_u ΔT), a discharge energy x the a
   - if B_t < 0: every battery discharges f E^dis_{u,t} with f = min(1, −B_t / Σ_{v ∈ U_b} E^dis_{v,t});
   - if B_t = 0, or the sum is 0: idle.
 
+  With `charge_limit: production` a battery may charge from its own node's generation while that node imports (B_t > 0 but g_{u,t} < l_{u,t}): the charge respects c_{u,t} = g_{u,t} (decision D6), and under the virtual sharing model the extra import is covered by the community surplus. This depends on the DIISM answer on the charge rule for prosumers (section 15).
+
 The rule-based controller is a reference, not a lower bound: it is not required to beat idle batteries.
 
 **Fit Score** ([M24] eq. 11) between the daily welfare series of a reference T1 (the MILP oracle) and of a controller T2:

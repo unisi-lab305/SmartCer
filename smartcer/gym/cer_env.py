@@ -4,7 +4,9 @@ Gymnasium environment `SmartCerEnv` (ID `SmartCer-v1`) for the battery control o
 One continuous action per battery, `Box(-1, 1, (N,), float32)` in `storage_node_ids` order; reward
 R_t = W_t - σ K_t by default, other types in `smartcer.gym.rewards` (docs/FORMULATION.md sections
 7, 10, 11); information timing set by `observe_current_step` (section 12). The environment wraps a
-`smartcer.core.Community`.
+`smartcer.core.Community`. Optional hooks: a forecast provider (`smartcer.forecasts`), whose
+forecasts enter the observation only, and the MILP oracle (`smartcer.oracle`), whose data enter
+`info['privileged']` only.
 """
 
 from pathlib import Path
@@ -18,9 +20,11 @@ import pandas as pd
 import smartcer
 from smartcer.core.community import Community, CommunityStep
 from smartcer.data import load_scenario
+from smartcer.forecasts import FORECAST_PROVIDERS, ForecastProvider, PerfectForecast
 from smartcer.gym.observation import MinMaxNormalizer, ObservationBuilder, fit_normalizer
 from smartcer.gym.rewards import RewardBreakdown, make_reward
 from smartcer.gym.run_config import map_v062_run_config
+from smartcer.oracle import OracleProvider
 
 
 class SmartCerEnv(gym.Env):
@@ -30,7 +34,8 @@ class SmartCerEnv(gym.Env):
     Episodes cover `episode_length` steps of the scenario period, starting at its first step or,
     with `random_start`, at a step drawn with `self.np_random`. Every step of the episode is
     controlled; the episode ends on its last step with `truncated=True` (`terminated` is always
-    False), and the terminal observation comes from that step.
+    False), and the terminal observation comes from that step. With a forecast horizon H the
+    episodes use the steps 0, ..., n_steps - H - 1 only, so that every forecast lies in the data.
 
     Actions are clipped to [-1, 1] without penalty, then each node clips its action to the dynamic
     bounds and is penalised as in section 7. Non-finite actions raise `ValueError`.
@@ -48,6 +53,9 @@ class SmartCerEnv(gym.Env):
         penalty_coefficient: σ of the reward.
         episode_length: Steps per episode.
         random_start: Whether episodes start at a random step.
+        forecast: Forecast provider of the observation, or None.
+        forecast_horizon: Forecast horizon H in steps (0 without forecasts).
+        oracle: MILP oracle of `info['privileged']` and of the `ReplayController`, or None.
         action_space: `Box(-1, 1, (len(storage_node_ids),), float32)`.
         observation_space: Flat `Box`, see `smartcer.gym.observation.schema`.
     """
@@ -69,6 +77,9 @@ class SmartCerEnv(gym.Env):
         reward: str = 'welfare',
         reward_per_node: bool = False,
         penalty_coefficient: float = 10.0,
+        forecast: str | ForecastProvider | None = None,
+        forecast_horizon: int = 0,
+        oracle: str | Path | OracleProvider | None = None,
         seed: int | None = None,
     ) -> None:
         """
@@ -93,6 +104,12 @@ class SmartCerEnv(gym.Env):
             reward_per_node: Per-node variant (not for 'welfare'): r_u = m_u - σ k_u per battery
                 node, reported in `info['reward']['nodes']`, and R_t = Σ_u r_u.
             penalty_coefficient: σ, ≥ 0 (default 10, as in [M24]).
+            forecast: Forecasts of the observation's `forecast` section: a name of
+                `smartcer.forecasts.FORECAST_PROVIDERS` ('perfect'), built on the community, or a
+                provider; None for no forecasts.
+            forecast_horizon: Forecast horizon H in steps, ≥ 1 with forecasts.
+            oracle: MILP oracle: an oracle folder (`smartcer.oracle.read_oracle`) or an
+                `OracleProvider` of the same community; None for no oracle.
             seed: Seed used by the first `reset()` called without a seed.
 
         Raises:
@@ -115,11 +132,31 @@ class SmartCerEnv(gym.Env):
             normalizer = fit_normalizer(community, normalizer_window)
         elif not isinstance(normalizer, MinMaxNormalizer):
             normalizer = MinMaxNormalizer.load(normalizer)
+        self._forecast_name = forecast if isinstance(forecast, str) or forecast is None \
+            else type(forecast).__name__
+        if isinstance(forecast, str):
+            if forecast not in FORECAST_PROVIDERS:
+                raise ValueError(f'unknown forecast provider {forecast!r}; available: '
+                                 f'{list(FORECAST_PROVIDERS)}')
+            forecast = FORECAST_PROVIDERS[forecast](community)
+        if oracle is not None and not isinstance(oracle, OracleProvider):
+            oracle = OracleProvider.from_folder(oracle, community)
+        if oracle is not None and not (
+                oracle.node_ids == community.storage_node_ids
+                and np.array_equal(oracle.timestamps, community.timestamps)):
+            raise ValueError(f'oracle {oracle!r} was built for another community: its battery '
+                             f'nodes or steps differ')
+        self._builder = ObservationBuilder(community, observation, bool(observe_current_step),
+                                           lookback=lookback, normalizer=normalizer,
+                                           forecast=forecast, horizon=forecast_horizon)
         n_steps = community.n_steps
-        episode_length = n_steps if episode_length is None else int(episode_length)
-        if not 1 <= episode_length <= n_steps:
-            raise ValueError(f'episode_length must lie in [1, {n_steps}] (the period has '
-                             f'{n_steps} steps), got {episode_length}')
+        usable = n_steps - self._builder.horizon
+        episode_length = usable if episode_length is None else int(episode_length)
+        if not 1 <= episode_length <= usable:
+            kept = f', the last {n_steps - usable} kept for the forecasts' if usable < n_steps \
+                else ''
+            raise ValueError(f'episode_length must lie in [1, {usable}] (the period has '
+                             f'{n_steps} steps{kept}), got {episode_length}')
 
         self.community = community
         self.storage_node_ids = community.storage_node_ids
@@ -129,8 +166,12 @@ class SmartCerEnv(gym.Env):
         self.penalty_coefficient = self._reward.penalty_coefficient
         self.episode_length = episode_length
         self.random_start = bool(random_start)
-        self._builder = ObservationBuilder(community, observation, self.observe_current_step,
-                                           lookback=lookback, normalizer=normalizer)
+        self.forecast = self._builder.forecast
+        self.forecast_horizon = self._builder.horizon
+        self.oracle = oracle
+        # true future values of the forecast steps, for `info['privileged']`
+        self._truth = PerfectForecast(community) if self.forecast is not None else None
+        self._usable_steps = usable
         self.normalizer = self._builder.normalizer
         self.obs_layout = self._builder.layout
         self.observation_space = self._builder.space
@@ -176,7 +217,8 @@ class SmartCerEnv(gym.Env):
 
         Returns:
             dict[str, Any]: SmartCer version, scenario name and folder, period, time step, episode
-            settings, seed, observation settings and normaliser window, reward settings.
+            settings, seed, observation settings and normaliser window, reward settings, forecast
+            provider (name or class) and horizon, oracle folder.
         """
         timestamps = self.community.timestamps
         return {
@@ -197,25 +239,56 @@ class SmartCerEnv(gym.Env):
             'reward': self.reward_type,
             'reward_per_node': self.reward_per_node,
             'penalty_coefficient': self.penalty_coefficient,
+            'forecast': self._forecast_name,
+            'forecast_horizon': self.forecast_horizon,
+            'oracle': None if self.oracle is None else self.oracle.source,
         }
 
-    def _info(self, t: int) -> dict[str, Any]:
+    def _info(self, t: int, observed: int) -> dict[str, Any]:
         """
         Info common to reset and step.
 
         Args:
-            t: Step index.
+            t: Step index of the info (the executed step, or the first step after a reset).
+            observed: Step of the observation returned with the info.
 
         Returns:
-            dict[str, Any]: `t`, `timestamp` and `privileged` (data for the critic only, empty
-            until the oracle and forecast providers of phase 7).
+            dict[str, Any]: `t`, `timestamp` and `privileged` (see `_privileged`).
         """
-        return {'t': t, 'timestamp': self.community.timestamps[t], 'privileged': {}}
+        return {'t': t, 'timestamp': self.community.timestamps[t],
+                'privileged': self._privileged(observed)}
+
+    def _privileged(self, t: int) -> dict[str, Any]:
+        """
+        Data for the critic only, about the step of the observation they accompany.
+
+        Args:
+            t: Step of the returned observation (the step of the next action; the last step of
+                the episode for the terminal observation).
+
+        Returns:
+            dict[str, Any]: Empty without oracle and forecasts. Otherwise `t`; with an oracle,
+            `oracle_action` (a*_t, one value per battery in action order) and `oracle_soc` (the
+            oracle state of charge at the end of step t, kWh); with forecasts, `true_future`
+            (`'<node_id>/<quantity>'` → the true values of the forecast steps of the
+            observation, kWh per step, same keys and order as the observed forecasts).
+        """
+        if self.oracle is None and self._truth is None:
+            return {}
+        privileged: dict[str, Any] = {'t': t}
+        if self.oracle is not None:
+            privileged['oracle_action'] = self.oracle.action(t)
+            privileged['oracle_soc'] = self.oracle.soc(t)
+        if self._truth is not None:
+            truth = self._truth.get(self._builder.forecast_start(t), self.forecast_horizon)
+            privileged['true_future'] = {key: truth[key] for key in self._builder.forecast_keys}
+        return privileged
 
     def reset(self, *, seed: int | None = None,
               options: dict[str, Any] | None = None) -> tuple[np.ndarray, dict[str, Any]]:
         """
-        Start an episode: restore the batteries and choose the first step.
+        Start an episode: restore the batteries, reset the forecast provider with
+        `self.np_random` and choose the first step.
 
         Args:
             seed: Seed of `self.np_random` and of the action space; if None, the constructor's
@@ -232,16 +305,19 @@ class SmartCerEnv(gym.Env):
         super().reset(seed=seed)
         if seed is not None:
             self.action_space.seed(seed)
-        n_starts = self.community.n_steps - self.episode_length + 1
+        n_starts = self._usable_steps - self.episode_length + 1
         start = int(self.np_random.integers(n_starts)) if self.random_start else 0
         self._episode_start, self._episode_end = start, start + self.episode_length - 1
         self._t = start
         self._needs_reset = False
         self.community.reset()
-        info = self._info(start)
+        if self.forecast is not None:
+            self.forecast.reset(self.np_random)
+        obs = self._builder.build(start)
+        info = self._info(start, start)
         info.update(episode_start=start, episode_end=self._episode_end,
-                    obs_clipped=int(self._builder.clipped[start]))
-        return self._builder.build(start), info
+                    obs_clipped=self._builder.last_clipped)
+        return obs, info
 
     def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         """
@@ -282,7 +358,7 @@ class SmartCerEnv(gym.Env):
             self._t = t + 1
         obs = self._builder.build(self._t)
         info = self._step_info(result, clipped, reward)
-        info['obs_clipped'] = int(self._builder.clipped[self._t])
+        info['obs_clipped'] = self._builder.last_clipped
         return obs, float(reward.total), False, truncated, info
 
     def _step_info(self, result: CommunityStep, action: np.ndarray,
@@ -301,7 +377,7 @@ class SmartCerEnv(gym.Env):
             penalty, total), `welfare` (breakdown), `penalty` (K_t), `action` (after the [-1, 1]
             clip) and `nodes` (node id → NodeStep fields).
         """
-        info = self._info(result.t)
+        info = self._info(result.t, self._t)
         w = result.welfare
         reward_info: dict[str, Any] = {'type': self.reward_type, 'main': reward.main,
                                        'penalty': reward.penalty, 'total': reward.total}
