@@ -15,11 +15,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   strict expected-failure tests documenting the known defects
 - Makefile, pytest configuration, pre-commit hooks, CI workflow and tag-triggered GitHub Release
   workflow
+- New battery model `smartcer.core.Battery` following `docs/FORMULATION.md`: separate charge and
+  discharge power limits and efficiencies on the node side, explicit time step, dynamic action
+  bounds derived from the dynamics, clipping with a constraint penalty, self-discharge and storage
+  usage cost; the state of charge never leaves its limits (0.6.2 defect S4). Not yet used by the
+  0.6.2 environment
+- `Battery.from_config` reads storage sections in the 1.0 and the 0.6.2 format
 
 ### Changed
 
 - Python 3.12 or newer is now required
 - `holidays` is now a runtime dependency
+
+### Deprecated
+
+- 0.6.2 storage keys `rated_power`, `efficiency` and `alfa` (mapped to their 1.0 equivalents) and
+  `beta` (ignored: battery degradation is not modelled)
 
 ### Fixed
 
