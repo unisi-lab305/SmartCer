@@ -10,9 +10,9 @@ battery; it receives an hourly incentive on the shared energy (*energia condivis
 between the total energy exported and the total energy imported by its members. An RL agent
 controls the batteries.
 
-**Status:** version 0.6.2 is being refactored into 1.0.0 following
+**Status:** version 1.0.0, the refactoring of 0.6.2 that followed
 [docs/refactor/REFACTOR_v1.md](docs/refactor/REFACTOR_v1.md); progress, deviations and open
-questions are in [docs/refactor/PROGRESS.md](docs/refactor/PROGRESS.md). Phases 0-7 and the extra
+questions are in [docs/refactor/PROGRESS.md](docs/refactor/PROGRESS.md). Phases 0-8 and the extra
 phase 7b are complete: the Gymnasium environment `SmartCer-v1` (`smartcer/gym/`, with its rewards,
 observation presets, baseline controllers, results tracking and KPIs) wraps the 1.0 physics and
 economics (`smartcer/core/`) and the scenario loader (`smartcer/data/`); forecast providers
@@ -191,7 +191,7 @@ This project follows [Semantic Versioning](https://semver.org/): **MAJOR.MINOR.P
 
 **Version numbers in both files MUST ALWAYS be identical** (`make version` checks them).
 
-The version stays at `0.6.2` during the refactoring; it becomes `1.0.0` in phase 8.
+The refactoring ended with `1.0.0` (phase 8); the tag `v0.6.2` marks the code before it.
 
 ### Increment Rules
 
