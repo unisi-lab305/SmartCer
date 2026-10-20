@@ -1439,6 +1439,11 @@ questions.
     → all ran.
   - `make version` → `Version OK: 1.0.0`.
   - `make test-coverage` → 341 passed, 1 skipped (DIISM files absent), coverage 97 %.
+  - CI run 39383092589 on `06a700b` (pull request #12) → success:
+    - unit: 273 passed;
+    - integration: 60 passed, 9 skipped (local data absent);
+    - coverage: 97 %;
+    - the wheel of 1.0.0 imports every subpackage.
   - Speed, Leather year (5 episodes, median):
     - without forecasts: 3.34 s, 381 µs per step, 12.9 times faster than 0.6.2;
     - with `mmfe_standard`, H = 12: 4.95 s, 566 µs per step.
