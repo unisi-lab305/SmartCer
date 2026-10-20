@@ -295,6 +295,12 @@ def test_noise_is_reproducible_and_resampled_at_every_reset(mini_cer_v1_path: Pa
     ({'sigma_generation': 0.1, 'sigma_load': 0.1, 'rho': 1.5}, r'rho must lie in \[0, 1\]'),
     ({'sigma_generation': 0.1, 'sigma_load': 0.1, 'phi': 1.0}, r'phi must lie in \(-1, 1\)'),
     ({'sigma_generation': 0.1, 'sigma_load': 0.1, 'bias_load': '0'}, 'bias_load must be a finite'),
+    ({'sigma_generation': 0.1, 'sigma_load': 0.1, 'sigma_overrides': {'a/load': -0.1}},
+     r"sigma_overrides\['a/load'\] must be ≥ 0"),
+    ({'sigma_generation': 0.1, 'sigma_load': 0.1, 'sigma_overrides': {'a/load': None}},
+     r"sigma_overrides\['a/load'\] must be a finite number"),
+    ({'sigma_generation': 0.1, 'sigma_load': 0.1, 'sigma_overrides': [0.1]},
+     'sigma_overrides must map forecast keys'),
 ])
 def test_parameters_are_checked(kwargs: dict[str, Any], match: str) -> None:
     """
@@ -353,3 +359,44 @@ def test_presets_and_registry(mini_cer_v1_path: Path) -> None:
         assert provider.config() == {'preset': name, **vars(parameters)}
     custom = MMFEForecast(community, MMFEParameters(0.1, 0.2))
     assert custom.config()['preset'] is None and custom.config()['sigma_load'] == 0.2
+
+
+def test_sigma_overrides_set_the_sigma_of_one_series(flat_community: Community,
+                                                     mini_cer_v1_path: Path) -> None:
+    """
+    Test the per-series σ: with σ = 0.02 for both quantities and an override of 0.05 for the load
+    of node a, the lead-12 error of a/load has standard deviation 0.05 √12 and the other loads
+    0.02 √12 (2000 seeds); with σ = 0 and an override for `community/load` on the synthetic
+    scenario only that series differs from the truth. Unknown keys raise, and the parameters keep
+    a copy of the overrides.
+
+    Args:
+        flat_community: Flat scenario.
+        mini_cer_v1_path: Path of the 1.0-format synthetic scenario.
+    """
+    provider = MMFEForecast(flat_community, MMFEParameters(SIGMA, SIGMA, rho=0.5, phi=0.6,
+                                                           sigma_overrides={'a/load': 0.05}))
+    errors = np.empty((len(SEEDS), len(provider.keys)))
+    for i, seed in enumerate(SEEDS):
+        provider.reset(np.random.default_rng(seed))
+        errors[i] = relative_errors(provider.get(1, HORIZON), provider.keys)[:, -1]
+    std = dict(zip(provider.keys, errors.std(axis=0)))
+
+    assert std['a/load'] == pytest.approx(0.05 * np.sqrt(HORIZON), rel=0.1)
+    assert std['b/load'] == pytest.approx(SIGMA * np.sqrt(HORIZON), rel=0.1)
+    assert std['a/generation'] == pytest.approx(SIGMA * np.sqrt(HORIZON), rel=0.1)
+    community = load_scenario(mini_cer_v1_path)
+    overrides = {'community/load': 0.05}
+    parameters = MMFEParameters(0.0, 0.0, sigma_overrides=overrides)
+    overrides['community/load'] = 0.0
+    provider = MMFEForecast(community, parameters)
+    provider.reset(np.random.default_rng(0))
+    values, truth = provider.get(10, 6), PerfectForecast(community).get(10, 6)
+    assert parameters.sigma_overrides == {'community/load': 0.05}
+    assert not np.array_equal(values['community/load'], truth['community/load'])
+    for key in provider.keys:
+        if key != 'community/load':
+            np.testing.assert_array_equal(values[key], truth[key])
+    with pytest.raises(ValueError, match=r"sigma_overrides: \['house_1/load'\] are not forecast "
+                                         'keys'):
+        MMFEForecast(community, MMFEParameters(0.1, 0.1, sigma_overrides={'house_1/load': 0.1}))

@@ -84,13 +84,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   between nodes and over adjacent target steps; photovoltaic errors scaled on a monthly reference
   profile, zero at night; multiplicative load errors; optional bias), reproducible from the reset
   seed; presets `mmfe_perfect`, `mmfe_standard` and `mmfe_noisy` (provisional values) or custom
-  `MMFEParameters`
+  `MMFEParameters`, with optional per-series σ (`sigma_overrides`, e.g. a smaller σ for an
+  aggregated load)
 - The forecast section of the observation also holds the sale price over the horizon
   (`forecast/price_sell`, or per battery node) and the forecasts of the community totals of the
   nodes without a battery (`forecast/community/generation`, `forecast/community/load`)
 - The oracle's initial state of charge is inferred from the first row of its file and must match
-  the scenario's `soc_initial`; the replay moves oracle actions that exceed a bound by at most
-  1e-6 kWh (solver round-off) onto the bound and reports them
+  the scenario's `soc_initial` within a configurable tolerance (default 1e-3 kWh); the replay
+  moves oracle actions that exceed a bound by at most 1e-6 kWh (solver round-off) onto the bound
+  and reports them, and must start at the first step of the oracle file
 - With an oracle, the battery tables of a run hold the oracle state of charge and the gap from it,
   and the KPIs its mean and maximum per battery (`soc_gap_mean_kwh`, `soc_gap_max_kwh`)
 - `run_config()` records the settings of the forecast provider (`forecast_config`); the step

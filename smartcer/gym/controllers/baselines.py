@@ -173,7 +173,9 @@ def check_replay(env: SmartCerEnv, output_dir: str | Path, rtol: float = 1e-3,
     Play the oracle actions a* over the whole period and compare the result with the MILP.
 
     The period must consist of whole days (first step at midnight, last step ending at
-    midnight), so that every day of the replay is compared with a whole MILP day. Oracle actions
+    midnight), so that every day of the replay is compared with a whole MILP day, and it must
+    start at the first step of the oracle file: the replay starts from `soc_initial`, which is the
+    oracle's state only there. Oracle actions
     beyond a dynamic bound by at most 1e-6 kWh (solver round-off) are moved onto the bound and
     counted (`ReplayController`); larger violations are clipped and penalised by the environment.
     Checks that no step is penalised (K_t ≤ 1e-9) and, when the oracle has a daily objective, that
@@ -194,8 +196,8 @@ def check_replay(env: SmartCerEnv, output_dir: str | Path, rtol: float = 1e-3,
 
     Raises:
         ValueError: If the environment has no oracle, its episode does not cover the whole
-            period, the period is not made of whole days, rtol is negative or the output
-            directory is not allowed.
+            period, the period is not made of whole days or does not start at the first step
+            of the oracle file, rtol is negative or the output directory is not allowed.
     """
     folder = check_output_dir(output_dir, env)
     if env.oracle is None:
@@ -209,6 +211,12 @@ def check_replay(env: SmartCerEnv, output_dir: str | Path, rtol: float = 1e-3,
     if stamps[0] != stamps[0].normalize() or end != end.normalize():
         raise ValueError(f'the replay compares whole days: the period {stamps[0]} → {stamps[-1]} '
                          f'must start at midnight and its last step must end at midnight')
+    first = pd.Timestamp(env.oracle.first_timestamp)
+    if stamps[0] != first:
+        raise ValueError(f'the replay starts from soc_initial, the MILP\'s initial state of '
+                         f'charge, which holds only at the first step of the oracle file: the '
+                         f'period starts at {stamps[0]}, the oracle file at {first}; set start to '
+                         f'{first}')
     if np.isnan(rtol) or rtol < 0:
         raise ValueError(f'rtol must be ≥ 0, got {rtol!r}')
     controller = ReplayController(env)

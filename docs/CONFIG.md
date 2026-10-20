@@ -238,11 +238,18 @@ of forecast evolution (MMFE):
   the section has h = k + 1) carries the error e_τ(h) = ε_{τ,1} + … + ε_{τ,h}. The error variance
   is therefore linear in the lead time, and successive issues for the same target are consistent:
   each step reveals one innovation, and the true value is observed at lead time 0;
+- lead-time convention: lead time 1 is the first forecast step, the step right after the last
+  observed one (t + 1 with `observe_current_step=True`, t with `False`). Its forecast carries one
+  innovation (error variance σ²); only the observation itself, at lead time 0, is exact. An exact
+  lead-1 forecast would reveal g_t with `observe_current_step=False`, which the causal timing hides
+  (FORMULATION section 12);
 - each innovation is ε = b + σ (√ρ z + √(1 − ρ) ξ), with ξ standard normal, independent per
   series, and z a standard normal factor common to all series of the same quantity (generation or
-  load; the two quantities have independent factors), AR(1) over the target steps:
-  z_τ = φ z_{τ−1} + √(1 − φ²) η_τ. Two nodes have error correlation ρ; adjacent target steps have
-  error correlation ρ φ;
+  load), AR(1) over the target steps: z_τ = φ z_{τ−1} + √(1 − φ²) η_τ. Two nodes have error
+  correlation ρ; adjacent target steps have error correlation ρ φ;
+- limitation: the generation and load factors are independent, so a common cause of both errors
+  (e.g. the temperature, which moves PV output and air-conditioning load together) is not
+  modelled;
 - generation (photovoltaic): ŷ = min(max(y + r_τ e, 0), y^max), with r_τ the reference profile of
   the series (its mean over the steps of the same calendar month at the same time of day) and
   y^max the largest value of the series in the period. Where r_τ = 0 (night) the forecast is 0;
@@ -258,6 +265,12 @@ of forecast evolution (MMFE):
 | `rho` | share ρ of the innovation variance due to the common factor, in [0, 1] |
 | `phi` | AR(1) coefficient φ of the common factor over the target steps, in (−1, 1) |
 | `bias_generation`, `bias_load` | mean b of an innovation, in the units of σ's fraction (default 0); the mean error at lead time h is h b |
+| `sigma_overrides` | forecast key → σ of that series, replacing the σ of its quantity (default none), e.g. `{'community/load': 0.02}`; keys as in the provider: `'<node>/generation'`, `'<node>/load'`, `'community/generation'`, `'community/load'` |
+
+An aggregated load, such as `community/load` summing many consumers (about 100 in the Molise
+scenario), should have a smaller relative σ than a single member: the independent parts of the
+members' errors partly cancel (for n members with equal, independent errors the relative σ of the
+sum is σ / √n). Set it with `sigma_overrides`.
 
 Presets (`MMFE_PRESETS`, environment names `'mmfe_<preset>'`). **The values are provisional,
 pending calibration on forecast data**; with H = 12 they give an error standard deviation at lead
@@ -277,7 +290,8 @@ from smartcer.forecasts import MMFEForecast, MMFEParameters
 
 community = load_scenario('path/to/scenario')
 forecast = MMFEForecast(community, MMFEParameters(sigma_generation=0.1, sigma_load=0.05,
-                                                  rho=0.6, phi=0.85))
+                                                  rho=0.6, phi=0.85,
+                                                  sigma_overrides={'community/load': 0.02}))
 env = SmartCerEnv(community, forecast=forecast, forecast_horizon=12)
 ```
 
@@ -371,9 +385,12 @@ reproduce them: they are counted (`OracleProvider.simultaneous_rows`) and report
 The file has no initial state of charge. The MILP's S^ini is inferred from the first row of the
 file, s̃ = `soc_kwh` - η^cha `p_cha_kw` Δt + `p_dis_kw` Δt / η^dis (FORMULATION section 5 solved
 for the state before the step), and must equal the scenario's S^ini (`soc_initial`, after
-self-discharge when α > 0) within 1e-6 kWh; otherwise `OracleProvider` raises `ValueError` naming
-the node and both values. A period that starts after the first step of the file starts from the
-oracle state at the end of the step before it, which must be in the file.
+self-discharge when α > 0) within `soc_initial_tolerance_kwh` (default 1e-3 kWh, so that a file
+that rounds the state of charge passes; independent of the 1e-6 kWh replay tolerance below);
+otherwise `OracleProvider` raises `ValueError` naming the node and both values. Set another
+tolerance with `OracleProvider.from_folder(folder, community, soc_initial_tolerance_kwh=...)` and
+pass the provider as `oracle`. A period that starts after the first step of the file starts from
+the oracle state at the end of the step before it, which must be in the file.
 
 `check_replay` plays a\* over the whole period with the `ReplayController` (create the environment
 without `episode_length` and forecasts) and checks that K_t ≤ 1e-9 at every step and, with an
@@ -381,8 +398,10 @@ objective, that the cumulative welfare lies within `rtol` (default 1e-3) of the 
 objective. An oracle action beyond a dynamic bound by at most 1e-6 kWh (`REPLAY_TOLERANCE_KWH`,
 measured as energy on the node side: (a\* - A^upper) P^cha Δt or (-a\* - A^lower) P^dis Δt) is
 solver round-off: the controller moves it onto the bound, without penalty, and counts it; larger
-violations are clipped and penalised by the environment and fail the check. The period must be made of whole days (first step at 00:00, last step ending at
-24:00), so that every replayed day is compared with a whole MILP day; otherwise it raises
+violations are clipped and penalised by the environment and fail the check. The period must be
+made of whole days (first step at 00:00, last step ending at 24:00), so that every replayed day is
+compared with a whole MILP day, and must start at the first step of the oracle file, because the
+replay starts from `soc_initial`, the oracle's state only there; otherwise it raises
 `ValueError`:
 
 ```python

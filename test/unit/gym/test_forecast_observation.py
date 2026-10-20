@@ -332,7 +332,8 @@ def test_run_config_records_the_forecast(mini_cer_v1_path: Path) -> None:
     assert mmfe['forecast'] == 'mmfe_standard'
     assert mmfe['forecast_config'] == {'preset': 'standard', 'sigma_generation': 0.07,
                                        'sigma_load': 0.03, 'rho': 0.5, 'phi': 0.8,
-                                       'bias_generation': 0.0, 'bias_load': 0.0}
+                                       'bias_generation': 0.0, 'bias_load': 0.0,
+                                       'sigma_overrides': {}}
     json.dumps(mmfe)
 
 

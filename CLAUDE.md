@@ -408,12 +408,14 @@ ForecastProvider (Protocol): reset(rng), get(t, horizon) → {key: H values}, ke
         episode (lazily, generator spawned from env.np_random), error at lead h = sum of h
         innovations; ε = b + σ (√ρ z + √(1-ρ) ξ), z common per quantity, AR(1) (φ) over targets;
         PV: clip(y + r e, 0, peak), r = monthly mean at that time of day; load: max(y (1 + e), 0)
-MMFEParameters(sigma_generation, sigma_load, rho, phi, bias_generation, bias_load)
+MMFEParameters(sigma_generation, sigma_load, rho, phi, bias_generation, bias_load,
+               sigma_overrides={})   per-series σ by forecast key, e.g. {'community/load': 0.02}
 MMFE_PRESETS                        'perfect', 'standard', 'noisy' (provisional values)
 FORECAST_PROVIDERS                  read-only registry: 'perfect', 'mmfe_<preset>' → factory
                                     taking the community
 read_oracle(folder) → OracleData    the only function that knows the oracle file format
-OracleProvider(data, community)     .from_folder(folder, community); actions a* (n_steps, N),
+OracleProvider(data, community, soc_initial_tolerance_kwh=1e-3)   .from_folder(folder,
+                                    community, ...); first_timestamp; actions a* (n_steps, N),
                                     soc_kwh (end of step), soc_start_kwh, daily_objective,
                                     simultaneous_rows, action(t), soc(t) (start of step t)
 OracleWarning                       rows with p_cha > 0 and p_dis > 0 (count, first timestamp)
@@ -424,8 +426,10 @@ OracleWarning                       rows with p_cha > 0 and p_dis > 0 (count, fi
   0..n_steps - H - 2 (`observe_current_step=True`) or 0..n_steps - H - 1 (False), so that the
   step after every episode is observable.
 - The MILP's S^ini is inferred from the first row of the oracle file
-  (s - η^cha p^cha Δt + p^dis Δt / η^dis) and must equal the scenario's `soc_initial` within 1e-6
-  kWh (`SOC_INITIAL_TOLERANCE_KWH`), else `ValueError`.
+  (s - η^cha p^cha Δt + p^dis Δt / η^dis) and must equal the scenario's `soc_initial` within
+  `soc_initial_tolerance_kwh` (default 1e-3 kWh, `SOC_INITIAL_TOLERANCE_KWH`), else `ValueError`.
+- MMFE: lead time 1 carries one innovation, only the observation (lead 0) is exact; the
+  generation and load factors are independent (a documented limitation).
 - Oracle folder (provisional format, docs/CONFIG.md section 6): `trajectory.csv` (`datetime`,
   `node_id`, `p_cha_kw`, `p_dis_kw`, `soc_kwh`, one row per step and battery node) and optional
   `objective.csv` (`date`, `objective` in €, welfare per day). a* = p^cha / P^cha - p^dis / P^dis.
@@ -448,7 +452,8 @@ Controller(env)                     bound to the unwrapped SmartCerEnv; reads en
 CONTROLLERS                         read-only registry: name → factory taking the env
 run_episode(env, controller, seed) → ResultsTracker
 check_replay(env, output_dir, rtol=1e-3, seed=None) → ReplayCheck
-    plays a* over the whole period (whole days only): passed if K_t ≤ 1e-9 at every step and the
+    plays a* over the whole period (whole days only, starting at the first step of the oracle
+    file): passed if K_t ≤ 1e-9 at every step and the
     cumulative welfare is within rtol of the MILP objective; reports the oracle rows with
     simultaneous charge and discharge and the actions moved within the tolerance; writes
     oracle_daily.csv and oracle_replay.json

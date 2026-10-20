@@ -296,9 +296,9 @@ def test_provider_rejects_inconsistent_oracles(tmp_path: Path, mini_cer_v1_path:
 @pytest.mark.parametrize(('node_id', 'values', 'error'), [
     ('pv_bat', {'p_cha_kw': 2.5, 'soc_kwh': 4.25}, None),
     ('factory_bat', {'p_dis_kw': 1.0, 'soc_kwh': 4.0 - 1.0 / 0.9}, None),
-    ('pv_bat', {'soc_kwh': 2.0 + 5e-7}, None),
+    ('pv_bat', {'soc_kwh': 2.0 + 5e-4}, None),
     ('pv_bat', {'p_cha_kw': 2.5, 'soc_kwh': 4.3}, 2.05),
-    ('factory_bat', {'soc_kwh': 4.0 + 2e-6}, 4.000002),
+    ('factory_bat', {'soc_kwh': 4.0 + 2e-3}, 4.002),
 ])
 def test_provider_checks_the_inferred_initial_state_of_charge(
         tmp_path: Path, mini_cer_v1_path: Path, node_id: str, values: dict[str, float],
@@ -306,9 +306,10 @@ def test_provider_checks_the_inferred_initial_state_of_charge(
     """
     Test that the MILP's S^ini is inferred from the first row of the file as
     s - η^cha p^cha Δt + p^dis Δt / η^dis (η = 0.9, Δt = 1 h) and checked against the scenario's
-    S^ini (pv_bat 2 kWh, factory_bat 4 kWh) within 1e-6 kWh: pv_bat charging 2.5 kW to 4.25 kWh
+    S^ini (pv_bat 2 kWh, factory_bat 4 kWh) within 1e-3 kWh: pv_bat charging 2.5 kW to 4.25 kWh
     and factory_bat discharging 1 kW to 4 - 1/0.9 kWh start from S^ini; 4.3 kWh after the same
-    charge starts from 2.05 kWh and raises, and so does a difference of 2e-6 kWh.
+    charge starts from 2.05 kWh and raises; a difference of 5e-4 kWh (a rounded file) is accepted,
+    one of 2e-3 kWh is not.
 
     Args:
         tmp_path: Pytest temporary directory.
@@ -382,3 +383,27 @@ def test_inferred_initial_state_includes_self_discharge(tmp_path: Path, mini_cer
                                              r'10.000000 kWh \(9.900000 kWh after '
                                              r'self-discharge\)'):
             OracleProvider.from_folder(folder, community)
+
+
+def test_initial_state_tolerance_is_configurable(tmp_path: Path, mini_cer_v1_path: Path) -> None:
+    """
+    Test that the tolerance of the S^ini check is an argument (default 1e-3 kWh): a first row 5e-4
+    kWh above S^ini passes by default and with 1e-3, fails with 1e-6; a negative or non-finite
+    tolerance raises.
+
+    Args:
+        tmp_path: Pytest temporary directory.
+        mini_cer_v1_path: Path of the 1.0-format synthetic scenario.
+    """
+    table = full_trajectory()
+    set_row(table, 0, 'pv_bat', soc_kwh=2.0 + 5e-4)
+    folder = write_oracle(tmp_path / 'oracle', table)
+    community = load_scenario(mini_cer_v1_path)
+
+    OracleProvider.from_folder(folder, community)
+    OracleProvider.from_folder(folder, community, soc_initial_tolerance_kwh=1e-3)
+    with pytest.raises(ValueError, match='the MILP starts from 2.000500 kWh'):
+        OracleProvider.from_folder(folder, community, soc_initial_tolerance_kwh=1e-6)
+    for tolerance in (-1e-3, float('nan')):
+        with pytest.raises(ValueError, match='soc_initial_tolerance_kwh must be a finite number'):
+            OracleProvider.from_folder(folder, community, soc_initial_tolerance_kwh=tolerance)

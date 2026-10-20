@@ -361,3 +361,23 @@ def test_tracker_reports_the_gap_from_the_oracle_state_of_charge(mini_cer_v1_pat
                               controllers=('naive',))
     assert 'soc_gap_mean_kwh' not in plain['naive']['batteries']['pv_bat']
     assert 'soc_gap_kwh' not in pd.read_csv(tmp_path / 'plain' / 'naive' / 'nodes' / 'pv_bat.csv')
+
+
+def test_replay_starts_at_the_first_step_of_the_oracle_file(mini_cer_v1_path: Path,
+                                                             synthetic_oracle: Path,
+                                                             tmp_path: Path) -> None:
+    """
+    Test that the replay rejects a period of whole days that starts after the first step of the
+    oracle file (the second day of the synthetic oracle): the replay starts from soc_initial, the
+    oracle's state only at its first step.
+
+    Args:
+        mini_cer_v1_path: Path of the 1.0-format synthetic scenario.
+        synthetic_oracle: Oracle folder of the synthetic scenario.
+        tmp_path: Pytest temporary directory.
+    """
+    env = SmartCerEnv(mini_cer_v1_path, start='2022-01-04 00:00', oracle=synthetic_oracle)
+
+    with pytest.raises(ValueError, match='the period starts at 2022-01-04 00:00:00, the oracle '
+                                         'file at 2022-01-03 00:00:00; set start to 2022-01-03'):
+        check_replay(env, tmp_path / 'out')
