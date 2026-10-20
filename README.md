@@ -24,6 +24,10 @@ incentive.
 The model is defined in [docs/FORMULATION.md](docs/FORMULATION.md); every scenario and run option
 is in [docs/CONFIG.md](docs/CONFIG.md).
 
+**Status: beta.** Version 1.0.0 is classified as *Development Status 4 - Beta*. The MILP oracle
+file format and the MMFE forecast presets are provisional, and the replay of the DIISM MILP
+oracle has not run yet. The status moves to *Production/Stable* once that replay passes.
+
 ---
 
 ## Installation
