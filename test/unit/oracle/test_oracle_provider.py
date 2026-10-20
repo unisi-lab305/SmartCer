@@ -3,6 +3,7 @@ Tests of the oracle adapter `read_oracle` (provisional DIISM file format) and of
 on the synthetic scenario (batteries pv_bat 5 kW and factory_bat 10 kW).
 """
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -17,6 +18,8 @@ pytestmark = pytest.mark.unit
 
 HEADER = 'datetime,node_id,p_cha_kw,p_dis_kw,soc_kwh'
 STEPS = pd.date_range('2022-01-03 00:00', periods=48, freq='h')
+# S^ini of the batteries: soc_min 0.1 of 20 and 40 kWh
+SOC_INITIAL = {'pv_bat': 2.0, 'factory_bat': 4.0}
 
 
 def write_oracle(folder: Path, trajectory: list[str] | pd.DataFrame,
@@ -52,10 +55,11 @@ def full_trajectory(steps: pd.DatetimeIndex = STEPS,
         nodes: Node ids.
 
     Returns:
-        pd.DataFrame: Columns of the trajectory file, zero powers, state of charge 4 kWh.
+        pd.DataFrame: Columns of the trajectory file, zero powers, state of charge S^ini of the
+        scenario (0 for a node without a battery).
     """
     return pd.DataFrame([{'datetime': str(s), 'node_id': n, 'p_cha_kw': 0.0, 'p_dis_kw': 0.0,
-                          'soc_kwh': 4.0} for s in steps for n in nodes])
+                          'soc_kwh': SOC_INITIAL.get(n, 0.0)} for s in steps for n in nodes])
 
 
 def set_row(table: pd.DataFrame, step: int, node_id: str, **values: float) -> None:
@@ -167,8 +171,10 @@ def test_provider_computes_the_optimal_actions(tmp_path: Path, mini_cer_v1_path:
     """
     Test a* = p_cha / P^cha - p_dis / P^dis by hand, in action order (pv_bat, factory_bat) although
     the file lists factory_bat first: pv_bat charging 2.5 of 5 kW → 0.5, discharging 1 kW → -0.2;
-    factory_bat discharging 10 of 10 kW → -1. Rows after the period are ignored and the
-    objective is kept for the days of the period.
+    factory_bat discharging 10 of 10 kW → -1. The state of charge of `soc_kwh` is that of the
+    file, at the end of each step; `soc(t)` is the state at the start of step t: S^ini (2 and
+    4 kWh) at t = 0, else the file's state at the end of step t - 1. Rows after the period are
+    ignored and the objective is kept for the days of the period.
 
     Args:
         tmp_path: Pytest temporary directory.
@@ -189,8 +195,12 @@ def test_provider_computes_the_optimal_actions(tmp_path: Path, mini_cer_v1_path:
     np.testing.assert_allclose(oracle.action(30), [-0.2, 0.0])
     np.testing.assert_allclose(oracle.action(20), [0.0, -1.0])
     assert np.count_nonzero(oracle.actions) == 3
-    np.testing.assert_allclose(oracle.soc(9), [6.25, 4.0])
-    np.testing.assert_allclose(oracle.soc(20), [4.0, 15.0])
+    np.testing.assert_allclose(oracle.soc_kwh[9], [6.25, 4.0])
+    np.testing.assert_allclose(oracle.soc_kwh[20], [2.0, 15.0])
+    np.testing.assert_allclose(oracle.soc(0), [2.0, 4.0])
+    np.testing.assert_allclose(oracle.soc(9), [2.0, 4.0])
+    np.testing.assert_allclose(oracle.soc(10), [6.25, 4.0])
+    np.testing.assert_allclose(oracle.soc(21), [2.0, 15.0])
     assert list(oracle.daily_objective) == [10.0, -2.0]
     oracle.action(9)[:] = 0.0
     assert oracle.action(9)[0] == 0.5
@@ -198,13 +208,15 @@ def test_provider_computes_the_optimal_actions(tmp_path: Path, mini_cer_v1_path:
 
 def test_provider_aligns_with_a_sub_period(tmp_path: Path, mini_cer_v1_path: Path) -> None:
     """
-    Test that an oracle of the whole scenario serves a community loaded for the second day.
+    Test that an oracle of the whole scenario serves a community loaded for the second day, whose
+    first step starts from the oracle state at the end of the first day (factory_bat 7 kWh).
 
     Args:
         tmp_path: Pytest temporary directory.
         mini_cer_v1_path: Path of the 1.0-format synthetic scenario.
     """
     table = full_trajectory()
+    set_row(table, 23, 'factory_bat', soc_kwh=7.0)
     set_row(table, 33, 'factory_bat', p_cha_kw=5.0)
     folder = write_oracle(tmp_path / 'oracle', table, [
         'date,objective', '2022-01-03,10', '2022-01-04,-2'])
@@ -213,6 +225,7 @@ def test_provider_aligns_with_a_sub_period(tmp_path: Path, mini_cer_v1_path: Pat
     oracle = OracleProvider.from_folder(folder, community)
 
     np.testing.assert_allclose(oracle.action(9), [0.0, 0.5])
+    np.testing.assert_allclose(oracle.soc(0), [2.0, 7.0])
     assert list(oracle.daily_objective) == [-2.0]
 
 
@@ -278,3 +291,94 @@ def test_provider_rejects_inconsistent_oracles(tmp_path: Path, mini_cer_v1_path:
 
     with pytest.raises(ValueError, match=match):
         OracleProvider.from_folder(folder, load_scenario(mini_cer_v1_path))
+
+
+@pytest.mark.parametrize(('node_id', 'values', 'error'), [
+    ('pv_bat', {'p_cha_kw': 2.5, 'soc_kwh': 4.25}, None),
+    ('factory_bat', {'p_dis_kw': 1.0, 'soc_kwh': 4.0 - 1.0 / 0.9}, None),
+    ('pv_bat', {'soc_kwh': 2.0 + 5e-7}, None),
+    ('pv_bat', {'p_cha_kw': 2.5, 'soc_kwh': 4.3}, 2.05),
+    ('factory_bat', {'soc_kwh': 4.0 + 2e-6}, 4.000002),
+])
+def test_provider_checks_the_inferred_initial_state_of_charge(
+        tmp_path: Path, mini_cer_v1_path: Path, node_id: str, values: dict[str, float],
+        error: float | None) -> None:
+    """
+    Test that the MILP's S^ini is inferred from the first row of the file as
+    s - η^cha p^cha Δt + p^dis Δt / η^dis (η = 0.9, Δt = 1 h) and checked against the scenario's
+    S^ini (pv_bat 2 kWh, factory_bat 4 kWh) within 1e-6 kWh: pv_bat charging 2.5 kW to 4.25 kWh
+    and factory_bat discharging 1 kW to 4 - 1/0.9 kWh start from S^ini; 4.3 kWh after the same
+    charge starts from 2.05 kWh and raises, and so does a difference of 2e-6 kWh.
+
+    Args:
+        tmp_path: Pytest temporary directory.
+        mini_cer_v1_path: Path of the 1.0-format synthetic scenario.
+        node_id: Battery node of the changed first row.
+        values: Values of the first row.
+        error: Inferred S^ini named by the expected error, or None if the oracle is accepted.
+    """
+    table = full_trajectory()
+    set_row(table, 0, node_id, **values)
+    folder = write_oracle(tmp_path / 'oracle', table)
+    community = load_scenario(mini_cer_v1_path)
+
+    if error is None:
+        np.testing.assert_allclose(OracleProvider.from_folder(folder, community).soc(0),
+                                   [2.0, 4.0])
+    else:
+        with pytest.raises(ValueError, match=rf"node '{node_id}': the MILP starts from "
+                                             rf'{error:.6f} kWh \(inferred from its first step '
+                                             r'2022-01-03 00:00:00\), the scenario from '
+                                             'soc_initial 0.1'):
+            OracleProvider.from_folder(folder, community)
+
+
+def test_provider_needs_the_step_before_a_sub_period(tmp_path: Path,
+                                                     mini_cer_v1_path: Path) -> None:
+    """
+    Test that a period starting after the first step of the file needs the row of the step before
+    it, whose state of charge is the initial one.
+
+    Args:
+        tmp_path: Pytest temporary directory.
+        mini_cer_v1_path: Path of the 1.0-format synthetic scenario.
+    """
+    table = full_trajectory()
+    folder = write_oracle(tmp_path / 'oracle', table[table['datetime'] != str(STEPS[23])])
+    community = load_scenario(mini_cer_v1_path, start='2022-01-04 00:00')
+
+    with pytest.raises(ValueError, match=r'no row for the step before it \(2022-01-03 23:00:00\)'):
+        OracleProvider.from_folder(folder, community)
+
+
+@pytest.mark.parametrize(('soc_kwh', 'accepted'), [(9.9, True), (10.0, False)])
+def test_inferred_initial_state_includes_self_discharge(tmp_path: Path, mini_cer_v1_copy: Path,
+                                                        soc_kwh: float, accepted: bool) -> None:
+    """
+    Test that with self-discharge the inferred state is compared with S^ini after one step of
+    self-discharge: pv_bat with S^ini 0.5 × 20 = 10 kWh and α = 0.01 per hour starts the first
+    step from 9.9 kWh, so an idle first row at 9.9 kWh is accepted and one at 10 kWh is not.
+
+    Args:
+        tmp_path: Pytest temporary directory.
+        mini_cer_v1_copy: Writable copy of the 1.0-format synthetic scenario.
+        soc_kwh: State of charge of pv_bat in the idle first row.
+        accepted: Whether the oracle is accepted.
+    """
+    path = mini_cer_v1_copy / 'config.json'
+    config = json.loads(path.read_text())
+    config['nodes']['pv_bat']['storage'].update(soc_initial=0.5, alpha=0.01)
+    path.write_text(json.dumps(config))
+    table = full_trajectory()
+    set_row(table, 0, 'pv_bat', soc_kwh=soc_kwh)
+    folder = write_oracle(tmp_path / 'oracle', table)
+    community = load_scenario(mini_cer_v1_copy)
+
+    if accepted:
+        np.testing.assert_allclose(OracleProvider.from_folder(folder, community).soc(0),
+                                   [10.0, 4.0])
+    else:
+        with pytest.raises(ValueError, match=r'starts from 10.000000 kWh .* soc_initial 0.5 = '
+                                             r'10.000000 kWh \(9.900000 kWh after '
+                                             r'self-discharge\)'):
+            OracleProvider.from_folder(folder, community)

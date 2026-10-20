@@ -133,6 +133,22 @@ def test_kpis_hand_values() -> None:
     assert set(kpis['batteries']) == {'a', 'b'}
 
 
+def test_kpis_report_the_gap_from_the_oracle_state_of_charge() -> None:
+    """
+    Test that a battery table with `soc_gap_kwh` (runs with an oracle) adds the mean and the
+    maximum of the absolute gap, by hand: gaps 1 and -3 kWh → mean 2, max 3; a table without the
+    column adds neither.
+    """
+    gap = node_table([6.0, 4.0], [0.0, 0.0]).assign(soc_gap_kwh=[1.0, -3.0])
+    nodes = {'a': gap, 'b': node_table([4.0, 0.0], [0.0, 0.0])}
+
+    batteries = compute_kpis(community_table(), nodes, {'a': 10.0, 'b': 20.0})['batteries']
+
+    assert batteries['a']['soc_gap_mean_kwh'] == pytest.approx(2.0)
+    assert batteries['a']['soc_gap_max_kwh'] == pytest.approx(3.0)
+    assert 'soc_gap_mean_kwh' not in batteries['b'] and 'soc_gap_max_kwh' not in batteries['b']
+
+
 def test_s12_rates_are_named_after_what_they_measure() -> None:
     """
     Test the replacement of the 0.6.2 KPIs (S12): shared / exported is the sharing rate,

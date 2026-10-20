@@ -44,8 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   window (`normalizer_window`, default the whole period), saved to and loaded from JSON
   (`env.normalizer.save(path)`, `normalizer=path`)
 - `info['privileged']` in the reset and step info, with data for the critic only about the step of
-  the returned observation: the oracle action and state of charge (`oracle`) and the true values
-  of the forecast steps (`forecast`); empty without them
+  the returned observation: the oracle action and state of charge at the start of the step
+  (`oracle`) and the true values of the forecast steps (`forecast`); empty without them
 - `info['obs_clipped']` in the reset and step info: the number of observation values clipped to
   [0, 1] because they lie outside the normaliser's training range
 - Baseline controllers in `smartcer.gym.controllers`: `NaiveController` (idle batteries) and
@@ -79,6 +79,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   period of whole days, checks that no step is penalised and that the welfare matches the MILP
   objective within a relative tolerance (default 1e-3), reports the rows with simultaneous charge
   and discharge, and writes a per-day comparison
+- `MMFEForecast`: simulated forecast errors following the martingale model of forecast evolution
+  (error variance linear in the lead time, consistent forecasts across issues, errors correlated
+  between nodes and over adjacent target steps; photovoltaic errors scaled on a monthly reference
+  profile, zero at night; multiplicative load errors; optional bias), reproducible from the reset
+  seed; presets `mmfe_perfect`, `mmfe_standard` and `mmfe_noisy` (provisional values) or custom
+  `MMFEParameters`
+- The forecast section of the observation also holds the sale price over the horizon
+  (`forecast/price_sell`, or per battery node) and the forecasts of the community totals of the
+  nodes without a battery (`forecast/community/generation`, `forecast/community/load`)
+- The oracle's initial state of charge is inferred from the first row of its file and must match
+  the scenario's `soc_initial`; the replay moves oracle actions that exceed a bound by at most
+  1e-6 kWh (solver round-off) onto the bound and reports them
+- With an oracle, the battery tables of a run hold the oracle state of charge and the gap from it,
+  and the KPIs its mean and maximum per battery (`soc_gap_mean_kwh`, `soc_gap_max_kwh`)
+- `run_config()` records the settings of the forecast provider (`forecast_config`); the step
+  benchmark takes `--forecast` and `--horizon`
 
 ### Changed
 

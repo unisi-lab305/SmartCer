@@ -1131,3 +1131,226 @@ phase, in the format of section 9 of the brief, newest last.
   `test_terminal_observation_with_forecasts_is_the_next_step`, for both timings: an episode
   ending on the last usable step (43 or 44 of 48, H = 3) returns the observation of the next
   step, with the true forecasts of steps 45-47.
+
+- Pull request #10 (the review fixes d and e and the episode-window follow-up, after the merge of
+  #9) merged by Leonardo (merge commit `555a97b`).
+
+## Phase 7b · Complete forecasts for class A – 2026-10-19
+
+An extra phase requested by Leonardo before phase 8, together with the answers to the phase 7
+questions.
+
+- Branch and commits: `refactor/v1-phase-7b-forecasts`, created from `main` at `555a97b`.
+  - `ea5957d` feat(forecasts): add MMFE forecast errors, sale price and community forecasts,
+    oracle initial state and SoC gap
+  - this report
+- Done:
+  1. Answers to the phase 7 questions:
+     1. Oracle format: the 11 assumptions stand.
+        - `OracleProvider` infers the MILP's S^ini from the first row of the file,
+          s̃ = s − η^cha p^cha Δt + p^dis Δt / η^dis. It raises `ValueError` if s̃ differs from
+          the scenario's `soc_initial` by more than 1e-6 kWh (`SOC_INITIAL_TOLERANCE_KWH`). The
+          message names the node, the inferred value and `soc_initial`.
+        - Replay tolerance: an oracle action beyond a dynamic bound by at most 1e-6 kWh
+          (`REPLAY_TOLERANCE_KWH`, node-side energy (a\* − A^upper) P^cha Δt or
+          (−a\* − A^lower) P^dis Δt) is moved onto the bound by the `ReplayController`, without
+          penalty. It is counted in `ReplayCheck.clipped_rows` and `clipped_max_kwh` and in
+          `oracle_replay.json`. Larger violations are penalised by the environment and fail the
+          check.
+     2. The forecast section also holds `forecast/community/generation` and
+        `forecast/community/load`, the totals of the nodes without a battery. `PerfectForecast`
+        returns them too; `true_future` has the same keys.
+     3. `oracle_soc` in `info['privileged']` is the oracle state at the start of step t:
+        `soc_initial` at the first step of the file, otherwise the file's state at the end of
+        step t − 1 (`OracleProvider.soc(t)`, `soc_start_kwh`; `soc_kwh` keeps the end-of-step
+        states for the replay).
+        - With an oracle, `ResultsTracker` adds `oracle_soc_kwh` and
+          `soc_gap_kwh` = `soc_kwh` − `oracle_soc_kwh` to every battery table. Both are taken at
+          the end of each step, the instant of `soc_kwh`.
+        - `compute_kpis` adds `soc_gap_mean_kwh` and `soc_gap_max_kwh` (absolute gap) per battery.
+  2. Scope a: the sale price over the horizon, exact and not normalised, as in the price section.
+     - With global prices it is one feature, `forecast/price_sell`; otherwise
+       `forecast/<node>/sell_price` per battery node.
+     - The values are precomputed with the static features, so they cost nothing per step.
+     - The purchase price stays out.
+     - Section order: prices, community totals, battery nodes, the same order as the rest of the
+       vector.
+  3. Scope b: `smartcer/forecasts/mmfe.py`.
+     - `MMFEForecast(community, parameters='standard')`, `MMFEParameters`, presets
+       `MMFE_PRESETS` (`perfect`, `standard`, `noisy`), registered as `'mmfe_<preset>'`.
+     - Innovations: for every series and target step τ, H innovations are drawn once per
+       episode. The error at lead time h is the sum of the first h; each step reveals one.
+     - ε = b + σ (√ρ z + √(1 − ρ) ξ), with z common to all series of a quantity and AR(1) (φ)
+       over the target steps.
+     - Generation: ŷ = clip(y + r_τ e, 0, y^max), where r_τ is the monthly mean at that time of
+       day; the forecast is 0 where r_τ = 0. Load: ŷ = max(y (1 + e), 0).
+     - The generator is spawned from `env.np_random` at every reset. Innovations are drawn
+       lazily, in blocks of 168 target steps.
+     - `config()` returns the preset and the parameters, which `run_config()` records as
+       `forecast_config`.
+  4. Scope c: tests (33 new test cases, 335 in total).
+     - `test/unit/forecasts/test_mmfe_forecast.py`: statistical tests on 2000 seeds, bias, PV at
+       night, presets, reproducibility and argument checks.
+     - Forecast section: global price and MMFE reproducibility in the environment.
+     - Oracle: S^ini cases, self-discharge, the row before a sub-period.
+     - Replay tolerance; SoC gap in tracker and KPIs.
+     - `check_env` (Gymnasium and SB3) and the performance rules also run with MMFE.
+  5. Docs and tools:
+     - CONFIG.md: a new Forecasts section with the model, the parameters and the presets marked
+       provisional; the observation, info, output and oracle sections are updated.
+     - KPI.md: the gap from the oracle state of charge.
+     - CLAUDE.md, CHANGELOG.
+     - `benchmarks/bench_step.py` takes `--forecast` and `--horizon`.
+- Acceptance checks:
+  - Variance linear in the lead time (`test_error_variance_grows_linearly_with_the_lead_time`):
+    - setup: σ = 0.02, ρ = 0.5, φ = 0.6, 2000 seeds, 3 nodes × 2 quantities;
+    - Var(e_h) / (h σ²) for h = 1 … 12 lies between 0.999 and 1.029 (tolerance ±0.1);
+    - linear fit: slope 1.026 σ², intercept −0.03 σ²;
+    - mean error within 0.24 of its 5-standard-error bound;
+
+    → passed.
+  - Successive issues for the same target converge to the true value
+    (`test_successive_issues_converge_to_the_true_value`):
+    - from lead h to h − 1 the error changes by one innovation: Var(e_h − e_{h−1}) / σ² lies
+      between 0.953 and 1.023 for h = 1 … 12; independent draws per issue would give (2h − 1) σ²,
+      23 σ² at h = 12;
+    - mean |e_h| grows as √h: 1.001 σ √(2/π) at lead 1, 3.49 σ √(2/π) at lead 12
+      (√12 = 3.46); at lead 0 the observation holds the true value;
+    - a repeated request returns the same values;
+
+    → passed.
+  - The errors of the nodes correlate with ρ (`test_errors_of_the_nodes_correlate_with_rho`),
+    pairs of nodes, both quantities, tolerance ±0.07:
+    - ρ = 0: −0.018 … 0.021;
+    - ρ = 0.5: 0.490 … 0.513;
+    - ρ = 0.9: 0.899 … 0.904;
+    - generation against load of the same node: −0.031 … −0.004.
+
+    → passed.
+  - AR(1) over the target steps (ρ = 0.8, φ = 0.5): the correlation of the lead-1 errors is
+    0.386 for adjacent targets (expected 0.4) and 0.198 for targets two steps apart
+    (expected 0.2) → passed.
+  - PV forecast at night (noisy preset, mini_cer, 20 seeds × 37 issues): pv_bat, factory_bat
+    and community generation are exactly 0 in hours 0-7 and 16-23, lie within [0, peak] and
+    differ from the true values in daylight → passed.
+  - Bias, by hand, without noise: b = 0.01 → 5 + 0.075 h kWh; b = −0.02 → 10 (1 − 0.02 h) kWh
+    → passed.
+  - Reproducibility:
+    - the same seed gives the same forecasts, for the provider and for the environment's
+      observations;
+    - another seed, or a second episode without a seed, gives new errors;
+    - the rest of the observation and `true_future` are unchanged;
+
+    → passed.
+  - `check_env` with MMFE:
+    - Gymnasium: `mmfe_noisy`, H = 12, oracle, `extended` preset, causal timing, random start;
+      its determinism check needs the noise to follow the reset seed;
+    - Stable-Baselines3: `mmfe_standard`;
+
+    → passed.
+  - Performance rules with MMFE: no pandas code in `step()`, one observation per step → passed.
+  - Oracle answers:
+    - S^ini: a first row charging 2.5 kW to 4.25 kWh or discharging 1 kW to 4 − 1/0.9 kWh is
+      accepted, and so is a difference of 5e-7 kWh; 4.3 kWh (S^ini 2.05) and +2e-6 kWh raise;
+      with α = 0.01 the reference is S^ini after self-discharge (9.9 kWh);
+    - replay tolerance: an excess of 5e-7 kWh is clipped and counted (`clipped_rows` 1), and
+      the check passes; 2e-6 kWh is penalised and fails;
+    - SoC gap: the replay gives a maximum of at most 1e-9 kWh; idle batteries give S^ini minus
+      the oracle state, with mean and maximum as in the KPIs;
+    - `oracle_soc` equals the environment's state of charge at every step of the replay of the
+      synthetic oracle;
+
+    → passed.
+  - Replay of the synthetic oracle (phase 7 acceptance) → still passed. DIISM replay → skipped,
+    no files.
+  - `make test-coverage` → 335 passed, 1 skipped (DIISM), coverage 97 % (`mmfe.py` 98 %).
+  - CI run 39311119905 on `f1cf690` (pull request #11) → success:
+    - unit: 268 passed;
+    - integration: 59 passed, 9 skipped (local data absent);
+    - coverage: 97 %.
+  - Speed, Leather year, random actions, `meco`, 7 episodes, median:
+
+    | Forecast | Values | µs per step | s per year |
+    |---|---|---|---|
+    | none | 39 | 383–413 | 3.4–3.6 |
+    | `perfect`, H = 12 | 207 | 547 | 4.8 |
+    | `mmfe_standard`, H = 12 | 207 | 563 | 4.9 |
+    | `mmfe_noisy`, H = 12 | 207 | 549 | 4.8 |
+
+    - MMFE costs about 2 % over the perfect forecast.
+    - On 168-step random-start episodes, reset included, it takes 91 ms per episode against
+      83 ms with `perfect` (+9 %): the lazy draws and the spawned generator.
+    - With H = 12 the observation grows from 135 values (phase 7) to 207: the sale price of the
+      4 battery nodes (Leather has per-node prices) and the 2 community totals add 72.
+- Deviations from the brief and why:
+  - Lead time convention. The error at lead time h is the sum of h innovations, so the lead-1
+    forecast still has one innovation, and the true value appears at lead 0, in the
+    observation. I read "converge to the true value at horizon 1" this way: the error shrinks
+    by one innovation per step and is smallest at lead 1. An exact lead-1 forecast would break
+    the causal timing: with `observe_current_step=False` the lead-1 forecast is step t, whose
+    generation the observation must not reveal (FORMULATION section 12).
+  - Common factor:
+    - one factor per quantity (generation, load), independent of each other; for each lead index
+      it is AR(1) over the target steps;
+    - ξ is independent per series, step and lead.
+  - Scale s_u:
+    - generation: σ times the reference profile r_τ; load: σ times the load;
+    - one σ per quantity for all nodes, the community totals included; no per-node σ.
+  - PV peak: the maximum of the series in the scenario period, because scenarios have no PV
+    rating. The reference profile is computed on the whole period: it scales the noise and is
+    not observed.
+  - Bias: the mean of each innovation, so the mean error at lead h is h b. This keeps the
+    martingale structure: the forecasts stay consistent and exact at lead 0.
+  - Lazy draws:
+    - innovations are drawn in blocks of 168 target steps as the episode advances, from a
+      generator spawned at reset;
+    - drawing the whole period at every reset (22 series × 8760 × 12 values on Leather) would
+      cost tens of milliseconds per reset, a large share of a short training episode;
+    - forecasts stay consistent while the requests move forward, as in an episode; a request
+      before the drawn steps, or after a gap, starts a new chain;
+    - the horizon is fixed by the first request of the episode.
+  - `MMFEForecast` forecasts only the series the observation uses (battery nodes and community
+    totals), not every node as `PerfectForecast` does. In Molise this avoids drawing noise for
+    about 100 consumers that are observed only as a total.
+  - Community forecasts are in both presets, although `meco` does not observe
+    `community/generation` and `community/load` for the current step. The forecast section has
+    been independent of the preset since phase 7.
+  - Sale price:
+    - per battery node when prices are not global (e.g. Leather), following the convention of the
+      current price;
+    - static and exact, so it is not part of the provider and not in `true_future`.
+  - `oracle_soc`:
+    - "for t = 0 use soc_initial" holds when the period starts at the first step of the oracle
+      file;
+    - for a period that starts later, the start state is the file's state at the end of the step
+      before, so that a yearly file still serves sub-periods; that row must exist (`ValueError`
+      otherwise).
+  - S^ini check:
+    - on the first row of the file, with a tolerance of 1e-6 kWh (not given in the answer; the
+      same value as the replay tolerance);
+    - with self-discharge (α > 0) the reference is max(S^min, (1 − α)^Δt S^ini), the state before
+      the first step; with α = 0, the DIISM default, it is S^ini.
+  - Replay tolerance: every positive violation up to 1e-6 kWh is moved and counted, including
+    round-off below 1e-9 that the environment would not penalise anyway.
+  - SoC gap: measured at the end of each step (= start of step t + 1). It is signed in the node
+    table and absolute in the KPIs, per battery only.
+  - Additions beyond the request: `forecast_config` in `run_config()`; `--forecast` and
+    `--horizon` in the benchmark; the helper `check_steps`.
+- Open questions for Leonardo:
+  1. Lead time convention: is it right that the lead-1 forecast carries one innovation (variance
+     σ²) and only the observation is exact? The alternative, an exact lead-1 forecast, reveals
+     g_t with `observe_current_step=False`.
+  2. Calibration of the presets:
+     - Is there forecast data (e.g. PV and load forecasts of the Molise members) to calibrate σ,
+       ρ and φ?
+     - Should σ differ per node? The aggregated consumers of Molise should have a smaller
+       relative load error than a single prosumer; now they share σ_load.
+  3. Should the generation and load factors be correlated? For example, temperature affects both.
+     They are independent now.
+  4. `check_replay` on a period that starts after the first step of the oracle file: the replay
+     starts from `soc_initial`, while the oracle is at its state of the previous step. The SoC
+     then differs and the check may fail. Should `check_replay` require the period to start at
+     the first step of the file?
+  5. Is 1e-6 kWh right for the S^ini check? A file that writes the state of charge rounded,
+     e.g. to 4 decimals, would fail it.
+- Ready for phase 8: yes. The pull request is open and waits for your review; you merge it.

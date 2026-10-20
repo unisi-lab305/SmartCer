@@ -23,35 +23,43 @@ PANDAS_DIR = str(Path(pd.__file__).parent)
 BENCHMARK = Path(__file__).parents[3] / 'benchmarks' / 'bench_step.py'
 
 
-def make_env(path: Path, oracle: Path) -> SmartCerEnv:
+FORECASTS = ('perfect', 'mmfe_noisy')
+
+
+def make_env(path: Path, oracle: Path, forecast: str) -> SmartCerEnv:
     """
     Environment exercising the optional step paths: extended preset with lookback, causal timing,
-    per-node rewards, perfect forecasts and an oracle.
+    per-node rewards, forecasts and an oracle.
 
     Args:
         path: Scenario folder.
         oracle: Oracle folder of the scenario.
+        forecast: Forecast provider name.
 
     Returns:
         SmartCerEnv: The environment.
     """
     return SmartCerEnv(path, observation='extended', lookback=2, observe_current_step=False,
                        reward='profit', reward_per_node=True, episode_length=24,
-                       random_start=True, forecast='perfect', forecast_horizon=3, oracle=oracle)
+                       random_start=True, forecast=forecast, forecast_horizon=3, oracle=oracle)
 
 
-def test_step_runs_no_pandas_code(mini_cer_v1_path: Path, synthetic_oracle: Path) -> None:
+@pytest.mark.parametrize('forecast', FORECASTS)
+def test_step_runs_no_pandas_code(mini_cer_v1_path: Path, synthetic_oracle: Path,
+                                  forecast: str) -> None:
     """
     Test that no function of the pandas package is called inside `step()` (0.6.2 read every value
-    through pandas, 86% of its step time, defect S13). The profiler sees every Python-level pandas
-    call, which covers any access to a Series, DataFrame or Index (`.loc`, `.iloc`, `[]`,
-    `.values`); it does not see compiled code alone, such as building a `pd.Timestamp`.
+    through pandas, 86% of its step time, defect S13), with perfect and MMFE forecasts. The
+    profiler sees every Python-level pandas call, which covers any access to a Series, DataFrame
+    or Index (`.loc`, `.iloc`, `[]`, `.values`); it does not see compiled code alone, such as
+    building a `pd.Timestamp`.
 
     Args:
         mini_cer_v1_path: Path of the 1.0-format synthetic scenario.
         synthetic_oracle: Oracle folder of the synthetic scenario.
+        forecast: Forecast provider name.
     """
-    env = make_env(mini_cer_v1_path, synthetic_oracle)
+    env = make_env(mini_cer_v1_path, synthetic_oracle, forecast)
     env.reset(seed=0)
     actions = np.random.default_rng(0).uniform(-1.0, 1.0, size=(24, 2))
     called: set[str] = set()
@@ -71,18 +79,21 @@ def test_step_runs_no_pandas_code(mini_cer_v1_path: Path, synthetic_oracle: Path
     assert [name for name in called if name.startswith(PANDAS_DIR)] == []
 
 
+@pytest.mark.parametrize('forecast', FORECASTS)
 def test_observation_is_built_once_per_step(mini_cer_v1_path: Path, synthetic_oracle: Path,
-                                            monkeypatch: pytest.MonkeyPatch) -> None:
+                                            monkeypatch: pytest.MonkeyPatch,
+                                            forecast: str) -> None:
     """
     Test that reset and every step build the observation exactly once (0.6.2 computed it twice per
-    step, S13).
+    step, S13), with perfect and MMFE forecasts.
 
     Args:
         mini_cer_v1_path: Path of the 1.0-format synthetic scenario.
         synthetic_oracle: Oracle folder of the synthetic scenario.
         monkeypatch: Pytest monkeypatch fixture.
+        forecast: Forecast provider name.
     """
-    env = make_env(mini_cer_v1_path, synthetic_oracle)
+    env = make_env(mini_cer_v1_path, synthetic_oracle, forecast)
     build: Callable[[int], np.ndarray] = env._builder.build
     calls: list[int] = []
 

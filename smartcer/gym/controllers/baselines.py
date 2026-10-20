@@ -138,6 +138,10 @@ class ReplayCheck:
             charge, over steps and batteries (kWh).
         simultaneous_rows: Oracle rows of the period (step and battery) with both p^cha > 0 and
             p^dis > 0, which the replay cannot reproduce (`OracleProvider.simultaneous_rows`).
+        clipped_rows: Oracle actions (step and battery) beyond a dynamic bound by at most
+            `REPLAY_TOLERANCE_KWH` (1e-6 kWh), moved onto the bound without penalty
+            (`ReplayController`).
+        clipped_max_kwh: Largest of those violations (kWh).
         welfare: Cumulative welfare of the replay Σ_t W_t (€).
         objective: Cumulative MILP objective of the days of the period (€), or None without an
             objective file.
@@ -153,6 +157,8 @@ class ReplayCheck:
     penalty_steps: int
     soc_error_max_kwh: float
     simultaneous_rows: int
+    clipped_rows: int
+    clipped_max_kwh: float
     welfare: float
     objective: float | None
     relative_gap: float | None
@@ -167,8 +173,10 @@ def check_replay(env: SmartCerEnv, output_dir: str | Path, rtol: float = 1e-3,
     Play the oracle actions a* over the whole period and compare the result with the MILP.
 
     The period must consist of whole days (first step at midnight, last step ending at
-    midnight), so that every day of the replay is compared with a whole MILP day. Checks that no
-    step is penalised (K_t ≤ 1e-9) and, when the oracle has a daily objective, that
+    midnight), so that every day of the replay is compared with a whole MILP day. Oracle actions
+    beyond a dynamic bound by at most 1e-6 kWh (solver round-off) are moved onto the bound and
+    counted (`ReplayController`); larger violations are clipped and penalised by the environment.
+    Checks that no step is penalised (K_t ≤ 1e-9) and, when the oracle has a daily objective, that
     the cumulative welfare lies within `rtol` of the cumulative objective. Writes
     `<output_dir>/oracle_daily.csv` (per day: `date`, `welfare` of the replay and, with an
     objective, `objective` and `difference` = welfare - objective) and
@@ -203,7 +211,8 @@ def check_replay(env: SmartCerEnv, output_dir: str | Path, rtol: float = 1e-3,
                          f'must start at midnight and its last step must end at midnight')
     if np.isnan(rtol) or rtol < 0:
         raise ValueError(f'rtol must be ≥ 0, got {rtol!r}')
-    tracker = run_episode(env, ReplayController(env), seed=seed)
+    controller = ReplayController(env)
+    tracker = run_episode(env, controller, seed=seed)
     table = tracker.community_table()
     nodes = tracker.node_tables()
     soc = np.column_stack([nodes[i]['soc_kwh'].to_numpy(dtype=np.float64)
@@ -230,6 +239,8 @@ def check_replay(env: SmartCerEnv, output_dir: str | Path, rtol: float = 1e-3,
         penalty_steps=penalty_steps,
         soc_error_max_kwh=float(np.max(np.abs(soc - env.oracle.soc_kwh))),
         simultaneous_rows=env.oracle.simultaneous_rows,
+        clipped_rows=controller.clipped_rows,
+        clipped_max_kwh=controller.clipped_max_kwh,
         welfare=welfare,
         objective=objective,
         relative_gap=relative_gap,

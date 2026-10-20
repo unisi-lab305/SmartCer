@@ -13,10 +13,11 @@ from smartcer.gym.controllers.baselines import (
 )
 from smartcer.gym.controllers.naive import NaiveController
 from smartcer.gym.controllers.rbc import RBCController
-from smartcer.gym.controllers.replay import ReplayController
+from smartcer.gym.controllers.replay import REPLAY_TOLERANCE_KWH, ReplayController
 
 
 __all__ = [
-    'CONTROLLERS', 'Controller', 'NaiveController', 'RBCController', 'ReplayCheck',
-    'ReplayController', 'check_output_dir', 'check_replay', 'compute_baselines', 'run_episode',
+    'CONTROLLERS', 'REPLAY_TOLERANCE_KWH', 'Controller', 'NaiveController', 'RBCController',
+    'ReplayCheck', 'ReplayController', 'check_output_dir', 'check_replay', 'compute_baselines',
+    'run_episode',
 ]

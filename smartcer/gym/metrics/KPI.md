@@ -65,6 +65,19 @@ For the community (K_t, section 7) and per battery node (k_{u,t}):
 The penalty measures the part of the requested action that was clipped to the dynamic bounds; the
 reward weights it with σ.
 
+## Gap from the oracle state of charge
+
+Only in runs whose environment has a MILP oracle (`oracle`), per battery node: s_{u,t+1} is the
+battery's state of charge at the end of step t and s\*_{u,t+1} the oracle's (`oracle_soc_kwh` of the
+node table, equal to the oracle state at the start of step t + 1):
+
+| Key | Formula | Unit |
+|---|---|---|
+| `soc_gap_mean_kwh` | mean over the steps of \|s_{u,t+1} − s\*_{u,t+1}\| | kWh |
+| `soc_gap_max_kwh` | maximum over the steps of \|s_{u,t+1} − s\*_{u,t+1}\| | kWh |
+
+The node table holds the signed gap `soc_gap_kwh` = s_{u,t+1} − s\*_{u,t+1}.
+
 ## Fit Score
 
 `smartcer.gym.metrics.fit_score(reference, candidate)`, [M24] eq. 11 (FORMULATION section 13),

@@ -110,8 +110,9 @@ class SmartCerEnv(gym.Env):
                 node, reported in `info['reward']['nodes']`, and R_t = Σ_u r_u.
             penalty_coefficient: σ, ≥ 0 (default 10, as in [M24]).
             forecast: Forecasts of the observation's `forecast` section: a name of
-                `smartcer.forecasts.FORECAST_PROVIDERS` ('perfect'), built on the community, or a
-                provider; None for no forecasts.
+                `smartcer.forecasts.FORECAST_PROVIDERS` ('perfect', 'mmfe_perfect',
+                'mmfe_standard', 'mmfe_noisy'), built on the community, or a provider; None for
+                no forecasts.
             forecast_horizon: Forecast horizon H in steps, ≥ 1 with forecasts.
             oracle: MILP oracle: an oracle folder (`smartcer.oracle.read_oracle`) or an
                 `OracleProvider` of the same community; None for no oracle.
@@ -233,7 +234,8 @@ class SmartCerEnv(gym.Env):
         Returns:
             dict[str, Any]: SmartCer version, scenario name and folder, period, time step, episode
             settings, seed, observation settings and normaliser window, reward settings, forecast
-            provider (name or class) and horizon, oracle folder.
+            provider (name or class), its settings (`forecast_config`, from the provider's
+            `config()` if it has one, else None) and horizon, oracle folder.
         """
         timestamps = self.community.timestamps
         return {
@@ -255,6 +257,8 @@ class SmartCerEnv(gym.Env):
             'reward_per_node': self.reward_per_node,
             'penalty_coefficient': self.penalty_coefficient,
             'forecast': self._forecast_name,
+            'forecast_config': self.forecast.config() if callable(
+                getattr(self.forecast, 'config', None)) else None,
             'forecast_horizon': self.forecast_horizon,
             'oracle': None if self.oracle is None else self.oracle.source,
         }
@@ -284,9 +288,10 @@ class SmartCerEnv(gym.Env):
         Returns:
             dict[str, Any]: Empty without oracle and forecasts. Otherwise `t`; with an oracle,
             `oracle_action` (a*_t, one value per battery in action order) and `oracle_soc` (the
-            oracle state of charge at the end of step t, kWh); with forecasts, `true_future`
-            (`'<node_id>/<quantity>'` → the true values of the forecast steps of the
-            observation, kWh per step, same keys and order as the observed forecasts).
+            oracle state of charge at the start of step t, kWh, comparable with the observed
+            state of charge); with forecasts, `true_future` (`'<node_id>/<quantity>'` and
+            `'community/<quantity>'` → the true values of the forecast steps of the observation,
+            kWh per step, same keys and order as the observed forecasts).
         """
         if self.oracle is None and self._truth is None:
             return {}
