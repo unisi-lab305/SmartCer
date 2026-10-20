@@ -1460,3 +1460,41 @@ questions.
   1. `pyproject.toml` still has the classifier `Development Status :: 4 - Beta`. Should 1.0.0
      declare `5 - Production/Stable`? It is not changed without your answer.
 - Ready for the release: yes, once the pull request is merged and you confirm `/release`.
+
+- Pull request #12 merged by Leonardo (merge commit `b37bf60`). The CI-result commit pushed after
+  the merge (`286e0e6`) reaches `main` through the follow-up pull request below, as `5ba8735`.
+- Answer (2026-10-20): the classifier stays `Development Status :: 4 - Beta` for 1.0.0, because
+  the oracle format and the MMFE presets are provisional and the DIISM replay has not run yet.
+  `pyproject.toml` is unchanged. The README now says so, and that the status moves to
+  Production/Stable once the DIISM replay passes (`b16307a`, follow-up pull request).
+
+### Release 1.0.0 – 2026-10-20
+
+- `/release` after Leonardo's confirmation. The annotated tag `v1.0.0` is on `main` at `b37bf60`
+  and was pushed to `origin`.
+- GitHub Release workflow, run 39383592133 on `b37bf60` → success. Job `validate-and-release`:
+  the tag, `pyproject.toml` and `smartcer/__init__.py` agree, the CHANGELOG has `## [1.0.0]`,
+  and the tests pass.
+- Release "SmartCer 1.0.0" published at
+  <https://github.com/unisi-lab305/SmartCer/releases/tag/v1.0.0>, not a draft or a prerelease.
+  Assets: `smartcer-1.0.0-py3-none-any.whl` and `smartcer-1.0.0.tar.gz`. No PyPI publication
+  (D11).
+- Installation from the tag, in a clean environment:
+  - setup: a new virtual environment (Python 3.12.13);
+  - `pip install git+https://github.com/unisi-lab305/SmartCer@v1.0.0` installed SmartCer 1.0.0
+    with the latest dependencies: gymnasium 1.4.0, numpy 2.5.4, pandas 3.0.6, holidays 0.107;
+  - the check script ran outside the repository (`python -I`), on a copy of the synthetic
+    scenario `mini_cer_v1`;
+  - `import smartcer`: version 1.0.0, loaded from the environment's `site-packages`;
+  - `gym.make('SmartCer-v1', scenario=...)`, one episode with random actions: 48 steps,
+    truncated at the end, every observation (25 values) inside the space;
+  - the same with `forecast='mmfe_standard'`, `forecast_horizon=6`: 41 steps (48 − 6 − 1),
+    73 values;
+  - `compute_baselines`: `naive` and `rbc_community`, both with 0 penalised steps.
+
+  → passed.
+- The refactoring of the brief is complete.
+- Open points:
+  - the DIISM answers (FORMULATION section 15) and the DIISM oracle files; the replay test runs
+    as soon as `smartcer/cer_data/<scenario>/oracle/` exists;
+  - the calibration of the MMFE presets.
