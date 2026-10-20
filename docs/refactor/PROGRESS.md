@@ -1354,3 +1354,104 @@ questions.
   5. Is 1e-6 kWh right for the S^ini check? A file that writes the state of charge rounded,
      e.g. to 4 decimals, would fail it.
 - Ready for phase 8: yes. The pull request is open and waits for your review; you merge it.
+
+- Pull request #11 merged by Leonardo (merge commit `adf2b6d`).
+- Answers to the phase 7b questions (2026-10-20), applied in their own commit `eead99c` at the
+  start of phase 8:
+  1. Lead time: the convention is accepted as implemented. CONFIG.md now states it: lead 1
+     carries one innovation, and only the observation is exact.
+  2. The presets stay provisional; calibration will come from the literature later.
+     - `MMFEParameters.sigma_overrides` (forecast key → σ, e.g. `{'community/load': 0.02}`)
+       sets the σ of single series. Unknown keys and negative or non-finite values raise
+       `ValueError`.
+     - CONFIG.md says that an aggregated load should use a smaller relative σ (σ / √n for n
+       equal, independent members).
+  3. The generation and load factors stay independent. CONFIG.md and the module docstring
+     document this as a limitation.
+  4. `check_replay` raises `ValueError` unless the period starts at the first step of the oracle
+     file. `OracleProvider.first_timestamp` gives that step.
+  5. The S^ini tolerance is a separate argument,
+     `OracleProvider(..., soc_initial_tolerance_kwh=1e-3)` (also in `from_folder`).
+     - Its default `SOC_INITIAL_TOLERANCE_KWH` is now 1e-3 kWh.
+     - It is independent of the 1e-6 kWh replay tolerance.
+     - A negative or non-finite value raises `ValueError`.
+
+  The commit adds 6 test cases:
+  - per-series σ (the std of a/load is 0.05 √12 against 0.02 √12; only `community/load` is
+    noisy);
+  - override validation;
+  - the tolerance argument (5e-4 kWh passes by default and fails with 1e-6);
+  - the replay of a period starting on the second day of the oracle file.
+
+  The S^ini cases moved to 5e-4 (accepted) and 2e-3 kWh (rejected).
+
+## Phase 8 · Documentation and release – 2026-10-20
+
+- Branch and commits: `refactor/v1-phase-8-release`, created from `main` at `adf2b6d`.
+  - `eead99c` feat(forecasts): apply the phase 7b answers: per-series MMFE sigma, replay from
+    the oracle start, configurable S_ini tolerance
+  - `7a9657d` docs: rewrite the README for 1.0 and add the new-scenario and milp-check skills
+  - `8611d61` chore: bump version to 1.0.0 (after Leonardo's confirmation)
+  - this report, with the CLAUDE.md status
+- Done:
+  1. README rewritten for 1.0:
+     - what SmartCer is, installation from the tag (also with the `rl` extra) and for
+       development;
+     - a quick start with `gym.make('SmartCer-v1', ...)`, the scenario format and the run
+       options;
+     - forecasts (`perfect`, the MMFE presets, custom parameters with `sigma_overrides`);
+     - the oracle folder, `info['privileged']` and `check_replay`;
+     - baselines and results, a SAC example with `ResultsCallback`;
+     - the migration guide from 0.6.2: tables for the API, the configuration keys and the
+       behaviour changes, with the defect numbers;
+     - links to FORMULATION, CONFIG, KPI.md and CHANGELOG, the two papers, the citation.
+  2. Final update of CLAUDE.md (status, version, skills, structure) and CHANGELOG. The stale
+     entry about the 0.6.2 characterisation and xfail tests, removed in phase 3, is replaced.
+     The README and the skills are added.
+  3. Project skills in `.claude/skills/`:
+     - `new-scenario`: collects the nodes and parameters, checks the columns, time step, units
+       and values of the CSV files, writes `smartcer/cer_data/<name>/config.json` (refuses an
+       existing folder), validates with `load_scenario` and runs `naive` and `rbc_community`
+       into `results/<name>/`;
+     - `milp-check`: replays the oracle from the first step of its file with `check_replay`
+       and reports the verdict, the feasibility counts and the 10 days with the largest
+       welfare gap, with the likely causes of a failure taken from FORMULATION section 15.
+  4. `/bump-version major` → 1.0.0, after Leonardo confirmed it. The CHANGELOG entries are now
+     under `## [1.0.0] - 2026-10-20`.
+  5. Pending, each after an explicit confirmation:
+     - merge of the pull request (Leonardo);
+     - `/release` (tag `v1.0.0` on `main`, GitHub Release workflow);
+     - check of `pip install git+https://github.com/unisi-lab305/SmartCer@v1.0.0` in a clean
+       environment.
+
+     The results will be added below.
+- Acceptance checks:
+  - Every README example was run on a copy of the synthetic scenario, with the period, episode
+    lengths and step counts made smaller:
+    - quick start, run options and saved normaliser;
+    - `perfect`, `mmfe_standard` and custom MMFE forecasts;
+    - synthetic oracle with `info['privileged']` and `check_replay` (passed, gap 0, Fit Score
+      100);
+    - `compute_baselines`;
+    - SAC with `TrackResults` and `ResultsCallback` (150 steps, one episode saved);
+    - `from_v062_config` with the old README configuration → `profit`, per node, σ = 0.3.
+
+    → all ran.
+  - `make version` → `Version OK: 1.0.0`.
+  - `make test-coverage` → 341 passed, 1 skipped (DIISM files absent), coverage 97 %.
+  - Speed, Leather year (5 episodes, median):
+    - without forecasts: 3.34 s, 381 µs per step, 12.9 times faster than 0.6.2;
+    - with `mmfe_standard`, H = 12: 4.95 s, 566 µs per step.
+- Deviations from the brief and why:
+  - The README's speed figure is "about 3-4 s" for one year of 10 nodes, and its migration
+    table rounds the speed-up to 12 times. Both are measured on this machine.
+  - The skills keep the brief's read-only rule for `cer_data`: `new-scenario` only creates a
+    new folder, never changes an existing one, and copies CSV files only with the user's
+    consent; both skills write outputs to `results/`.
+  - The version is bumped on the phase branch, so that the pull request carries the
+    `## [1.0.0]` CHANGELOG section that the release workflow checks. The tag waits until the
+    merge, so that it points at a commit on `main`.
+- Open questions for Leonardo:
+  1. `pyproject.toml` still has the classifier `Development Status :: 4 - Beta`. Should 1.0.0
+     declare `5 - Production/Stable`? It is not changed without your answer.
+- Ready for the release: yes, once the pull request is merged and you confirm `/release`.

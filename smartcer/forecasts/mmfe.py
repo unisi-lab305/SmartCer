@@ -11,13 +11,15 @@ so that the error variance grows linearly with the lead time and successive issu
 target are consistent: when the lead time drops from h to h - 1 the innovation ε_{i,τ,h} is
 revealed and leaves the error; at lead time 0 the true value is observed. Each innovation is
 
-    ε_{i,τ,j} = b_q + σ_q (sqrt(ρ) z_{q,τ,j} + sqrt(1 - ρ) ξ_{i,τ,j})
+    ε_{i,τ,j} = b_q + σ_i (sqrt(ρ) z_{q,τ,j} + sqrt(1 - ρ) ξ_{i,τ,j})
 
-with q the quantity of the series (generation or load), b_q an optional bias, ξ independent
+with q the quantity of the series (generation or load), σ_i the σ of its quantity unless the
+series has its own (`sigma_overrides`), b_q an optional bias, ξ independent
 standard normal draws per series and z a standard normal factor common to all series of the
 quantity, AR(1) over the target steps: z_{q,τ,j} = φ z_{q,τ-1,j} + sqrt(1 - φ²) η_{q,τ,j}. Two
 series of the same quantity therefore have error correlation ρ, and the errors of adjacent target
-steps are correlated through φ.
+steps are correlated through φ. The generation and load factors are independent: a common cause of
+both errors, such as the temperature, is not modelled (a limitation of the model).
 
 The error enters the forecast ŷ of the true value y as follows:
 
@@ -31,7 +33,8 @@ The innovations of an episode are drawn from a generator spawned from the one pa
 target steps, as the episode moves forward.
 """
 
-from dataclasses import asdict, dataclass
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass, field
 import math
 from types import MappingProxyType
 from typing import Any
@@ -61,6 +64,10 @@ class MMFEParameters:
         bias_generation: Mean b of a generation innovation, as a fraction of the reference
             profile; the mean error at lead time h is h b.
         bias_load: Mean b of a load innovation, as a fraction of the load.
+        sigma_overrides: Forecast key (e.g. `'community/load'`, `'<node_id>/generation'`) → σ of
+            that series, replacing the σ of its quantity. An aggregated load (e.g. many consumers
+            summed in `community/load`) should have a smaller relative σ than a single member:
+            the independent parts of the members' errors partly cancel.
     """
 
     sigma_generation: float
@@ -69,21 +76,31 @@ class MMFEParameters:
     phi: float = 0.0
     bias_generation: float = 0.0
     bias_load: float = 0.0
+    sigma_overrides: Mapping[str, float] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """
         Check the parameters.
 
         Raises:
-            ValueError: If a parameter is not a finite number or lies outside its range.
+            ValueError: If a parameter is not a finite number or lies outside its range, or
+                `sigma_overrides` is not a mapping of keys to σ ≥ 0.
         """
-        for name, value in asdict(self).items():
-            if not isinstance(value, (int, float)) or isinstance(value, bool) \
-                    or not math.isfinite(value):
+        if not isinstance(self.sigma_overrides, Mapping):
+            raise ValueError(f'MMFE parameter sigma_overrides must map forecast keys to σ, got '
+                             f'{self.sigma_overrides!r}')
+        # a plain copy, so that the parameters do not change with the caller's mapping
+        object.__setattr__(self, 'sigma_overrides', dict(self.sigma_overrides))
+        numbers = {name: value for name, value in asdict(self).items()
+                   if name != 'sigma_overrides'}
+        numbers.update({f'sigma_overrides[{key!r}]': value
+                        for key, value in self.sigma_overrides.items()})
+        for name, value in numbers.items():
+            if (not isinstance(value, (int, float)) or isinstance(value, bool)
+                    or not math.isfinite(value)):
                 raise ValueError(f'MMFE parameter {name} must be a finite number, got {value!r}')
-        for name in ('sigma_generation', 'sigma_load'):
-            if getattr(self, name) < 0.0:
-                raise ValueError(f'MMFE parameter {name} must be ≥ 0, got {getattr(self, name)}')
+            if name.startswith('sigma') and value < 0.0:
+                raise ValueError(f'MMFE parameter {name} must be ≥ 0, got {value}')
         if not 0.0 <= self.rho <= 1.0:
             raise ValueError(f'MMFE parameter rho must lie in [0, 1], got {self.rho}')
         if not -1.0 < self.phi < 1.0:
@@ -136,7 +153,8 @@ class MMFEForecast:
             parameters: Error parameters, or the name of a preset of `MMFE_PRESETS`.
 
         Raises:
-            ValueError: If the preset is unknown.
+            ValueError: If the preset is unknown or a key of `sigma_overrides` is not a forecast
+                key of the community.
         """
         self.preset = None
         if isinstance(parameters, str):
@@ -158,7 +176,13 @@ class MMFEForecast:
         self._upper = np.where(generation, self._truth.max(axis=1), np.inf)
         p = parameters
         self._quantity = np.where(generation, 0, 1)
-        self._sigma = np.where(generation, p.sigma_generation, p.sigma_load)
+        unknown = [key for key in p.sigma_overrides if key not in self.keys]
+        if unknown:
+            raise ValueError(f'sigma_overrides: {unknown} are not forecast keys of the community; '
+                             f'available: {list(self.keys)}')
+        self._sigma = np.array([p.sigma_overrides.get(key, p.sigma_generation if is_generation
+                                                      else p.sigma_load)
+                                for key, is_generation in zip(self.keys, generation)])
         self._bias = np.where(generation, p.bias_generation, p.bias_load)
         self._rng: np.random.Generator | None = None
         self._depth = 0
