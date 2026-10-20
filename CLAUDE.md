@@ -105,6 +105,13 @@ Five slash commands are available in `.claude/commands/`:
 | `/release` | Create and push the `vX.Y.Z` git tag (triggers the GitHub Release workflow) |
 | `/write-test <module>` | Write tests for a `smartcer` module in `test/unit/` and `test/integration/` |
 
+Two project skills are in `.claude/skills/`:
+
+| Skill | Description |
+|-------|-------------|
+| `new-scenario` | Create `smartcer/cer_data/<name>/config.json` in the 1.0 format from the user's CSV files, check columns, units and time step, validate with the loader and run `naive` and `rbc_community` (outputs in `results/<name>/`) |
+| `milp-check` | Replay a MILP oracle with `check_replay` (period from the first step of the oracle file, whole days) and report the verdict, the feasibility counts and the welfare gap per day (outputs in `results/milp_check/<scenario>/`) |
+
 **Typical release workflow:**
 
 1. Make code changes and `/add-and-commit` — updates CHANGELOG and commits
@@ -261,6 +268,7 @@ SmartCer/
 ├── docs/                           # FORMULATION.md, CONFIG.md, refactor/REFACTOR_v1.md,
 │                                   # refactor/PROGRESS.md
 ├── .claude/commands/               # slash commands
+├── .claude/skills/                 # project skills: new-scenario, milp-check
 └── .github/workflows/              # ci.yml, release.yml
 ```
 

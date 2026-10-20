@@ -11,8 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `smartcer.__version__` attribute
 - Optional dependency groups `dev` (test and lint tools), `rl` (Stable-Baselines3) and `all`
-- Test suite with a synthetic 4-node scenario, characterisation tests of the 0.6.2 behaviour and
-  strict expected-failure tests documenting the known defects
+- Test suite (unit and integration) with a synthetic 4-node scenario, hand-computed expected
+  values and a regression test for every fixed 0.6.2 defect (`test_s<n>_*`)
 - Makefile, pytest configuration, pre-commit hooks, CI workflow and tag-triggered GitHub Release
   workflow
 - New battery model `smartcer.core.Battery` following `docs/FORMULATION.md`: separate charge and
@@ -97,6 +97,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the KPIs its mean and maximum per battery (`soc_gap_mean_kwh`, `soc_gap_max_kwh`)
 - `run_config()` records the settings of the forecast provider (`forecast_config`); the step
   benchmark takes `--forecast` and `--horizon`
+- README for 1.0: installation from the tag, examples with forecasts, the oracle and
+  Stable-Baselines3, and a migration guide from 0.6.2
+- Claude Code skills `new-scenario` (create and check a 1.0 scenario, run one episode) and
+  `milp-check` (replay a MILP oracle and report the gap per day) in `.claude/skills/`
 
 ### Changed
 
