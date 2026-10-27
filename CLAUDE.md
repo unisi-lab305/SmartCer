@@ -172,8 +172,11 @@ Two project skills are in `.claude/skills/`:
   `## [X.Y.Z]` entry; unit and integration tests pass
 - **Actions**: builds sdist and wheel (`python -m build`), `twine check`, creates the GitHub Release
   with the CHANGELOG section as notes and the built files attached
-- **No PyPI publication** until 11/11/2026 (decision D11): the step is a commented block in the
-  workflow. Users install from the tag:
+- **No PyPI step**: the publish step is a commented block in the workflow. PyPI publication is
+  manual with `twine upload dist/*` (TestPyPI first), from the files of `python -m build`; the
+  first was 1.0.1 on 27/10/2026, which anticipated decision D11 (PyPI after 11/11/2026). Trusted
+  Publishing from the workflow is to be evaluated after 11/11/2026
+- **Installation**: `pip install smartcer` (<https://pypi.org/project/smartcer/>); from a tag:
   `pip install git+https://github.com/unisi-lab305/SmartCer@vX.Y.Z`
 
 Local test data (`smartcer/cer_data/`, `test/fixtures/local/`) are absent in CI: tests that need
