@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-27
+
+### Changed
+
+- Packaging: the license is declared as an SPDX expression (`license = "MIT"`,
+  `license-files = ["LICENSE"]`) and the build requires `setuptools>=77.0`; the deprecated license
+  classifier is removed
+- The README installs SmartCer from PyPI (`pip install smartcer`), with the GitHub tag as an
+  alternative
+- The README links to the documentation with absolute GitHub URLs, so that they work on the PyPI
+  page
+- `.gitignore` excludes the local `Claude outputs/` folder
+
 ## [1.0.0] - 2026-10-20
 
 ### Added

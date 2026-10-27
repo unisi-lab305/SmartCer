@@ -21,10 +21,10 @@ incentive.
   callback.
 - One year of hourly data with 10 nodes runs in about 3-4 s.
 
-The model is defined in [docs/FORMULATION.md](docs/FORMULATION.md); every scenario and run option
-is in [docs/CONFIG.md](docs/CONFIG.md).
+The model is defined in [docs/FORMULATION.md](https://github.com/unisi-lab305/SmartCer/blob/main/docs/FORMULATION.md); every scenario and run option
+is in [docs/CONFIG.md](https://github.com/unisi-lab305/SmartCer/blob/main/docs/CONFIG.md).
 
-**Status: beta.** Version 1.0.0 is classified as *Development Status 4 - Beta*. The MILP oracle
+**Status: beta.** Version 1.0.1 is classified as *Development Status 4 - Beta*. The MILP oracle
 file format and the MMFE forecast presets are provisional, and the replay of the DIISM MILP
 oracle has not run yet. The status moves to *Production/Stable* once that replay passes.
 
@@ -32,12 +32,19 @@ oracle has not run yet. The status moves to *Production/Stable* once that replay
 
 ## Installation
 
-Python 3.12 or newer. SmartCer is installed from a GitHub tag (it is not on PyPI):
+Python 3.12 or newer. SmartCer is installed from PyPI:
 
 ```bash
-pip install git+https://github.com/unisi-lab305/SmartCer@v1.0.0
+pip install smartcer
 # with Stable-Baselines3, for the training example and the results callback
-pip install "SmartCer[rl] @ git+https://github.com/unisi-lab305/SmartCer@v1.0.0"
+pip install "smartcer[rl]"
+```
+
+Alternatively, from a GitHub tag:
+
+```bash
+pip install git+https://github.com/unisi-lab305/SmartCer@v1.0.1
+pip install "smartcer[rl] @ git+https://github.com/unisi-lab305/SmartCer@v1.0.1"
 ```
 
 For development:
@@ -99,7 +106,7 @@ A scenario is a folder with a `config.json` and one CSV file per node:
 
 The CSV columns are `datetime`, `production` and `consumption` (kWh per step, or kW with
 `units: kW`), `sell_price` and `buy_price` (€/kWh). Scenarios in the 0.6.2 format are still read,
-with a `DeprecationWarning`. The full format is in [docs/CONFIG.md](docs/CONFIG.md), sections 1-4.
+with a `DeprecationWarning`. The full format is in [docs/CONFIG.md](https://github.com/unisi-lab305/SmartCer/blob/main/docs/CONFIG.md), sections 1-4.
 
 ### Run options
 
@@ -163,7 +170,7 @@ env = SmartCerEnv(community, forecast=forecast, forecast_horizon=12)
 ```
 
 `info['privileged']['true_future']` holds the true values of the forecast steps, for a critic.
-Details: [docs/CONFIG.md](docs/CONFIG.md), section 6, Forecasts.
+Details: [docs/CONFIG.md](https://github.com/unisi-lab305/SmartCer/blob/main/docs/CONFIG.md), section 6, Forecasts.
 
 ---
 
@@ -210,7 +217,7 @@ kpis = compute_baselines(env, 'results/baselines', controllers=('naive', 'rbc_co
 - Each run writes a community table, one table per node, the KPIs and the run configuration to an
   output folder, never into the scenario folder.
 - The `TrackResults` wrapper records any run in the same format.
-- The KPI formulas are in [smartcer/gym/metrics/KPI.md](smartcer/gym/metrics/KPI.md).
+- The KPI formulas are in [smartcer/gym/metrics/KPI.md](https://github.com/unisi-lab305/SmartCer/blob/main/smartcer/gym/metrics/KPI.md).
 
 ### Training with Stable-Baselines3
 
@@ -235,7 +242,7 @@ model.learn(total_timesteps=200_000, callback=callback)   # KPIs logged under sm
 
 The 0.6.2 code is at the tag `v0.6.2`. Version 1.0.0 is a rewrite, and its results are not
 numerically comparable with those of 0.6.2. The defects S1-S18 are listed in
-[docs/refactor/REFACTOR_v1.md](docs/refactor/REFACTOR_v1.md), section 2.
+[docs/refactor/REFACTOR_v1.md](https://github.com/unisi-lab305/SmartCer/blob/main/docs/refactor/REFACTOR_v1.md), section 2.
 
 ### API
 
@@ -286,12 +293,12 @@ numerically comparable with those of 0.6.2. The defects S1-S18 are listed in
 
 ## Documentation
 
-- [docs/FORMULATION.md](docs/FORMULATION.md): physics, economics, reward and information timing.
+- [docs/FORMULATION.md](https://github.com/unisi-lab305/SmartCer/blob/main/docs/FORMULATION.md): physics, economics, reward and information timing.
   It prevails over the code.
-- [docs/CONFIG.md](docs/CONFIG.md): scenario format, run arguments, observation, forecasts,
+- [docs/CONFIG.md](https://github.com/unisi-lab305/SmartCer/blob/main/docs/CONFIG.md): scenario format, run arguments, observation, forecasts,
   oracle files and outputs.
-- [smartcer/gym/metrics/KPI.md](smartcer/gym/metrics/KPI.md): KPI formulas.
-- [CHANGELOG.md](CHANGELOG.md): changes per version.
+- [smartcer/gym/metrics/KPI.md](https://github.com/unisi-lab305/SmartCer/blob/main/smartcer/gym/metrics/KPI.md): KPI formulas.
+- [CHANGELOG.md](https://github.com/unisi-lab305/SmartCer/blob/main/CHANGELOG.md): changes per version.
 
 The model follows two papers:
 
@@ -321,4 +328,4 @@ If you use **SmartCer** in your research, please cite this repository:
 
 ## License
 
-This project is licensed under the MIT License. For more details, see the [LICENSE](./LICENSE) file.
+This project is licensed under the MIT License. For more details, see the [LICENSE](https://github.com/unisi-lab305/SmartCer/blob/main/LICENSE) file.
