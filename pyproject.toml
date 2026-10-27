@@ -1,13 +1,14 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=77.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "SmartCer"
-version = "1.0.0"
+version = "1.0.1"
 description = "Gymnasium environment for Renewable Energy Community (CER)"
 authors = [{ name = "Leonardo Guiducci", email = "leonardo.guiducci@unisi.it" }]
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 readme = "README.md"
 keywords = ["gym", "renewable-energy", "environment", "reinforcement-learning"]
 requires-python = ">=3.12"
@@ -21,7 +22,6 @@ dependencies = [
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",

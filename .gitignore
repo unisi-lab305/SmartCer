@@ -247,3 +247,6 @@ fabric.properties
 
 # run outputs (baselines, training); they derive from cer_data at hourly resolution
 results/
+
+# local Claude Code outputs (notes, drafts), not part of the repository
+Claude outputs/
