@@ -1498,3 +1498,25 @@ questions.
   - the DIISM answers (FORMULATION section 15) and the DIISM oracle files; the replay test runs
     as soon as `smartcer/cer_data/<scenario>/oracle/` exists;
   - the calibration of the MMFE presets.
+
+### Release 1.0.1 – 2026-10-27
+
+- Decision D11 (PyPI publication only after 11/11/2026) anticipated to 27/10/2026: SmartCer 1.0.1
+  is on PyPI, <https://pypi.org/project/smartcer/1.0.1/>.
+- 1.0.1 changes only packaging and documentation (pull request #14, merge commit `c7fa5bb`):
+  SPDX license expression with `setuptools>=77.0`, installation from PyPI in the README, absolute
+  documentation links for the PyPI page.
+- Publication, manual with `twine`, each step after Leonardo's confirmation:
+  - `python -m build` on `c7fa5bb`, no warnings; `twine check --strict` passed;
+  - upload to TestPyPI, <https://test.pypi.org/project/SmartCer/1.0.1/>; installed in a new
+    conda environment (Python 3.12) with
+    `pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/
+    smartcer==1.0.1`: `import smartcer` gives version 1.0.1 and `SmartCer-v1` is registered;
+  - tag `v1.0.1` on `c7fa5bb`; GitHub Release workflow, run 40536502272 → success; release
+    <https://github.com/unisi-lab305/SmartCer/releases/tag/v1.0.1> with the wheel and the sdist;
+  - upload to PyPI of the same files tested on TestPyPI, not rebuilt; `pip install
+    smartcer==1.0.1` in a new conda environment: version 1.0.1, `SmartCer-v1` registered.
+
+  → passed.
+- The publish step of `release.yml` stays commented out: publication stays manual, and Trusted
+  Publishing is to be evaluated after 11/11/2026.
