@@ -1,5 +1,5 @@
 """
-Fit Score ([M24] eq. 11, docs/FORMULATION.md section 13) between daily welfare series.
+Fit Score ([M23] eq. 11, docs/FORMULATION.md section 13) between daily welfare series.
 """
 
 import numpy as np

@@ -99,7 +99,7 @@ class SmartCerEnv(gym.Env):
             random_start: Draw the first step of each episode uniformly among the feasible ones.
             observe_current_step: True: the observation of step t holds g, l and bounds of step t;
                 False: g and l of step t - 1 and a bound without the charge cap.
-            observation: Observation preset, 'meco' ([M24] Tab. II) or 'extended'.
+            observation: Observation preset, 'meco' ([M23] Tab. II) or 'extended'.
             lookback: Past steps of generation and load per battery node ('extended' only).
             normalizer: Normaliser of generation and load: a `MinMaxNormalizer` or the path of
                 its JSON file; None fits one on `normalizer_window`.
@@ -108,7 +108,7 @@ class SmartCerEnv(gym.Env):
             reward: Reward type, 'welfare' (R_t = W_t - σ K_t), 'profit' or 'energy'.
             reward_per_node: Per-node variant (not for 'welfare'): r_u = m_u - σ k_u per battery
                 node, reported in `info['reward']['nodes']`, and R_t = Σ_u r_u.
-            penalty_coefficient: σ, ≥ 0 (default 10, as in [M24]).
+            penalty_coefficient: σ, ≥ 0 (default 10, as in [M23]).
             forecast: Forecasts of the observation's `forecast` section: a name of
                 `smartcer.forecasts.FORECAST_PROVIDERS` ('perfect', 'mmfe_perfect',
                 'mmfe_standard', 'mmfe_noisy'), built on the community, or a provider; None for

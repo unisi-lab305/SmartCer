@@ -209,8 +209,8 @@ def write_legacy(tmp_path: Path, a_lines: list[str], b_lines: list[str]) -> Path
 
 def test_legacy_period_inside_shifted_block_is_cut_by_position(tmp_path: Path) -> None:
     """
-    Test the 0.6.2 format with node 'b' shifted by one hour from its third row (as the summer-time
-    block of Leather): the period is selected on node 'a' and both nodes are cut at the same rows,
+    Test the 0.6.2 format with node 'b' shifted by one hour from its third row (as a summer-time
+    block): the period is selected on node 'a' and both nodes are cut at the same rows,
     also when the boundary falls inside the shifted block.
 
     Args:

@@ -1,6 +1,6 @@
 ---
 name: milp-check
-description: Check a MILP oracle against SmartCer by replaying its optimal battery actions (check_replay) and report the welfare gap per day, penalised steps, state-of-charge differences and the Fit Score. Use when the user asks to check, validate or replay the MILP or DIISM oracle files of a scenario, or to compare the environment with the MILP.
+description: Check a MILP oracle against SmartCer by replaying its optimal battery actions (check_replay) and report the welfare gap per day, penalised steps, state-of-charge differences and the Fit Score. Use when the user asks to check, validate or replay the MILP oracle files of a scenario, or to compare the environment with the MILP.
 ---
 
 # MILP check
@@ -14,7 +14,7 @@ scenario folder or the oracle folder: `$ARGUMENTS`.
 - Read-only on `smartcer/cer_data/`: never modify the scenario or the oracle files, and never
   commit them or files derived from them at hourly resolution.
 - Write outputs to `results/milp_check/<scenario>/` (gitignored), never into `cer_data`.
-- The oracle file format is provisional (`docs/CONFIG.md`, section 6, Oracle files). It is
+- The oracle file format is provisional (`docs/configuration.md`, section 6, Oracle files). It is
   parsed only by `smartcer.oracle.read_oracle`. If the files do not match it, report the
   mismatch and stop: do not change the adapter unless the user asks.
 
@@ -70,5 +70,3 @@ If the check fails, say which condition failed. Give the likely causes in this o
 3. powers written in kWh per step instead of kW, with Δt ≠ 1 h;
 4. a different charge rule (`charge_limit`);
 5. objective terms beyond the welfare of FORMULATION section 10.
-
-These are the open points of `docs/FORMULATION.md` section 15.

@@ -1,5 +1,5 @@
 """
-Performance rules of `SmartCerEnv.step()` (phase 6): no pandas code runs inside a step, the
+Performance rules of `SmartCerEnv.step()`: no pandas code runs inside a step, the
 observation is built once per step, and the step benchmark `benchmarks/bench_step.py` runs.
 """
 

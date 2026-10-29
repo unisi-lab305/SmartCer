@@ -128,12 +128,12 @@ def test_legacy_format_is_mapped_with_warning() -> None:
     }
 
     with pytest.warns(DeprecationWarning, match='0.6.2 format') as record:
-        config = parse_config(raw, Path('Leather'))
+        config = parse_config(raw, Path('example'))
 
     assert "'simulation'" in str(record[0].message) and 'shop.Extra' in str(record[0].message)
     assert [n.node_id for n in config.nodes] == ['pv', 'home_2', 'shop']
     assert [n.node_type for n in config.nodes] == ['producer', 'consumer', 'prosumer']
-    assert config.nodes[1].csv_path == Path('Leather/nodes/consumers/home.csv')
+    assert config.nodes[1].csv_path == Path('example/nodes/consumers/home.csv')
     assert config.nodes[0].category == 'plant'
     assert (config.format_version, config.incentive.model, config.delta_t) == ('0.6.2', 'tip', 1.0)
 

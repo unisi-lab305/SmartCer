@@ -108,7 +108,7 @@ jobs:
           --notes-file release_notes.md
 
     # publication to PyPI stays manual (twine upload dist/*; 1.0.1 published on 27/10/2026);
-    # Trusted Publishing is to be evaluated after 11/11/2026 (D11). This step requires the
+    # Trusted Publishing is to be evaluated. This step requires the
     # PYPI_API_TOKEN repository secret
     #
     # - name: Publish to PyPI

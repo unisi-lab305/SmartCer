@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Documentation site (Sphinx, MyST, Furo) in `docs/`, deployed to GitHub Pages by
+  `.github/workflows/docs.yml`; optional dependencies `smartcer[docs]`
+- `examples/first_simulation.py`, a first simulation on the synthetic scenario of the repository
+- `CITATION.cff`, and a test (`test/unit/test_citation_version.py`) that keeps the version of the
+  BibTeX of the README and of `docs/citing.md` and of `CITATION.cff` equal to the package version
+- Site pages `configuration` (from `docs/CONFIG.md`, now a pointer), `FORMULATION` and
+  `migration`
+
+### Changed
+
+- `Documentation` project URL points to the site
+- The README is reduced to description, installation, quick start and citation; the migration
+  tables from 0.6.2 are in `docs/migration.md`
+- The citation is a `@software` entry (year 2026, version 1.0.1) plus the MECO 2023 paper
+- `make bench` and `benchmarks/bench_step.py` default to the synthetic scenario
+  (`SCENARIO=<folder>` overrides it)
+- Internal working notes and the tests that need local private data are removed
+  from the repository; passages about project coordination are removed from `docs/FORMULATION.md`
+- Docstrings of `ReplayCheck` and `CommunityStep`: absolute-value bars wrapped in double backticks
+  (formatting only)
+
 ## [1.0.1] - 2026-10-27
 
 ### Changed
@@ -18,7 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   alternative
 - The README links to the documentation with absolute GitHub URLs, so that they work on the PyPI
   page
-- `.gitignore` excludes the local `Claude outputs/` folder
+- `.gitignore` excludes a local output folder
 
 ## [1.0.0] - 2026-10-20
 
@@ -165,12 +188,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `self_consumption`); `net_metering` and `energy_balance` are gone (S12)
 - Run results are written to an output directory chosen by the caller, never into the scenario
   folder (S18)
-- 0.6.2 scenarios whose files have shifted timestamps (Leather) can be split with `start` and
+- 0.6.2 scenarios whose files have shifted timestamps can be split with `start` and
   `end` anywhere: the period is selected on the first node's timestamps and every node is cut at
   the same rows; files with different numbers of rows raise `ValueError`
-- Speed (S13): one year of Leather (10 nodes, 4 batteries) with random actions takes 3.2 s
+- Speed (S13): one year of hourly data (10 nodes, 4 batteries) with random actions takes 3.2 s
   (364 µs per step) instead of 51-52 s with 0.6.2 on the same machine, 16 times faster (43 s in
-  the 0.6.2 measurement of the refactoring brief): CSV files are read once, a step reads
+  an earlier 0.6.2 measurement): CSV files are read once, a step reads
   preloaded values without pandas, and the observation is built once per step from precomputed
   static features
 
@@ -178,7 +201,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.6.2] - 2025-03-17
 
-First tagged version; the tag was created retrospectively at the start of the 1.0 refactoring.
+First tagged version; the tag was created retrospectively at the start of the 1.0 rewrite.
 
 ### Added
 

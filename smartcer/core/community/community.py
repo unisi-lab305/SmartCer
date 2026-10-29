@@ -28,7 +28,7 @@ class CommunityStep:
         nodes: One record per node, in the community's node order.
         welfare: Welfare breakdown of the step.
         penalty: Mean constraint penalty over the nodes with a battery,
-            K_t = Σ_{u ∈ U_b} k_u / |U_b| (0 without batteries).
+            K_t = Σ_{u ∈ U_b} k_u / ``|U_b|`` (0 without batteries).
     """
 
     t: int

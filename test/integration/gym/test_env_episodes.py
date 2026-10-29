@@ -186,7 +186,7 @@ def test_terminal_observation_is_the_next_step(mini_cer_v1_path: Path,
 
 def test_reward_is_welfare_minus_penalty_and_info(mini_cer_v1_path: Path) -> None:
     """
-    Test R_t = W_t - σ K_t and the info content at 10:00 of day 1 (hand values of phase 2:
+    Test R_t = W_t - σ K_t and the info content at 10:00 of day 1 (hand values:
     W = 1.125 €, K = 0.25, σ = 10 → R = -1.375).
 
     Args:

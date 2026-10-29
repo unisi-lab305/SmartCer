@@ -1,5 +1,5 @@
 """
-Social welfare of a community step (docs/FORMULATION.md section 10, [M24] eq. 3).
+Social welfare of a community step (docs/FORMULATION.md section 10, [M23] eq. 3).
 """
 
 from dataclasses import dataclass

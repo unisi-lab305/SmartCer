@@ -14,7 +14,7 @@ from smartcer.gym.rewards.base import RewardCalculator
 
 class WelfareReward(RewardCalculator):
     """
-    R_t = W_t - σ K_t ([M24] eq. 8).
+    R_t = W_t - σ K_t ([M23] eq. 8).
     """
 
     name = 'welfare'

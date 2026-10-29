@@ -34,8 +34,6 @@ from smartcer.data import load_scenario
 FIXTURES_PATH = Path(__file__).parent / 'fixtures'
 MINI_CER_PATH = FIXTURES_PATH / 'mini_cer'
 MINI_CER_V1_PATH = FIXTURES_PATH / 'mini_cer_v1'
-LOCAL_FIXTURES_PATH = FIXTURES_PATH / 'local'
-CER_DATA_PATH = Path(__file__).parents[1] / 'smartcer' / 'cer_data'
 
 
 # =================================
@@ -154,32 +152,3 @@ def synthetic_oracle(tmp_path: Path) -> Path:
 # =========================
 # Fixtures for local data
 # =========================
-
-
-@pytest.fixture
-def local_fixtures_path() -> Path:
-    """
-    Folder of the local reference values (gitignored), written in phase 0 by
-    `scripts/make_reference_v062.py` (removed in phase 3, available in git history).
-
-    Returns:
-        Path: Folder `test/fixtures/local/`; the test is skipped when it is missing.
-    """
-    if not LOCAL_FIXTURES_PATH.is_dir():
-        pytest.skip('local reference values missing: run scripts/make_reference_v062.py from '
-                    'commit d878969 (removed in phase 3)')
-    return LOCAL_FIXTURES_PATH
-
-
-@pytest.fixture
-def leather_path() -> Path:
-    """
-    Folder of the local Leather scenario (gitignored, read-only).
-
-    Returns:
-        Path: `smartcer/cer_data/Leather/`; the test is skipped when it is missing.
-    """
-    path = CER_DATA_PATH / 'Leather'
-    if not (path / 'config.json').is_file():
-        pytest.skip('local scenario smartcer/cer_data/Leather missing')
-    return path

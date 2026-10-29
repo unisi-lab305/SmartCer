@@ -1,9 +1,8 @@
 """
-MILP oracle: the optimal battery trajectories of the DIISM MILP ([S22]), for the critic.
+MILP oracle: the optimal battery trajectories of a MILP ([S22]), for the critic.
 
-Oracle data enter only `info['privileged']` of `SmartCerEnv` and the `ReplayController`
-(docs/refactor/REFACTOR_v1.md section 4). An oracle folder holds (provisional format, pending the
-DIISM answers; `read_oracle` is the only function that knows it):
+Oracle data enter only `info['privileged']` of `SmartCerEnv` and the `ReplayController`.
+An oracle folder holds (provisional format; `read_oracle` is the only function that knows it):
 
 - `trajectory.csv`: one row per step and battery node, columns `datetime, node_id, p_cha_kw,
   p_dis_kw, soc_kwh`. `datetime` is the start of the step, without time zone, as in the scenario
@@ -172,7 +171,7 @@ def read_oracle(folder: str | Path) -> OracleData:
     Read the MILP outputs of an oracle folder (the adapter of the oracle file format).
 
     This is the only function that knows the file format (module docstring); when the format of
-    the DIISM files changes, only this function changes.
+    the oracle files changes, only this function changes.
 
     Args:
         folder: Oracle folder with `trajectory.csv` and optionally `objective.csv`.

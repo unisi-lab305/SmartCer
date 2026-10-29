@@ -1,7 +1,7 @@
 """
 Tests of the forecast hook of `SmartCerEnv`: the `forecast` section of the observation (sale
 prices, community totals, battery nodes), the episode window, `info['privileged']['true_future']`
-and the provider reset (phases 7 and 7b).
+and the provider reset.
 """
 
 from collections.abc import Callable
@@ -114,7 +114,7 @@ def test_forecast_section_layout(mini_cer_v1_path: Path) -> None:
 def test_perfect_forecast_puts_the_true_future_in_the_observation(
         mini_cer_v1_path: Path, observe_current_step: bool) -> None:
     """
-    Test the acceptance check of phase 7: with `PerfectForecast` and horizon H = 3, every
+    Test that with `PerfectForecast` and horizon H = 3, every
     observation of an episode holds, at `forecast/<node>/<quantity>` and
     `forecast/community/<quantity>`, the scaled true values of steps t + 1..t + 3
     (`observe_current_step=True`) or t..t + 2 (False), `info['privileged']['true_future']` holds
