@@ -1,7 +1,6 @@
 """
 Baseline runs on the synthetic scenario: output files, KPIs against hand calculations, the
-community mode of the rule-based controller and the protection of the scenario folders (S18); on
-the local Leather scenario, a year of the rule-based controller without penalties.
+community mode of the rule-based controller and the protection of the scenario folders (S18).
 """
 
 import json
@@ -10,7 +9,6 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from smartcer.data import TimestampWarning
 from smartcer.gym import SmartCerEnv
 from smartcer.gym.controllers import RBCController, compute_baselines, run_episode
 
@@ -151,22 +149,3 @@ def test_s18_baselines_refuse_scenario_folders(mini_cer_v1_copy: Path, tmp_path:
     assert not (mini_cer_v1_copy / 'simulations').exists()
     assert not (tmp_path / 'cer_data').exists()
     assert not (tmp_path / 'out').exists()
-
-
-@pytest.mark.parametrize('mode', ['node', 'community'])
-def test_rbc_is_never_penalised_on_leather(leather_path: Path, mode: str) -> None:
-    """
-    Test one year of the local Leather scenario (skipped when missing) with the rule-based
-    controller: its actions stay within the dynamic bounds, so no step is penalised.
-
-    Args:
-        leather_path: Path of the local Leather scenario.
-        mode: RBC mode.
-    """
-    with pytest.warns(TimestampWarning):
-        env = SmartCerEnv(leather_path)
-    kpis = run_episode(env, RBCController(env, mode=mode)).kpis()
-
-    assert kpis['steps'] == 8760
-    assert kpis['throughput_kwh'] > 0.0
-    assert kpis['penalty_steps'] == 0 and kpis['penalty_max'] == 0.0

@@ -1,5 +1,5 @@
 """
-Static checks of the layer rules of `smartcer/core/` (docs/refactor/REFACTOR_v1.md sections 0, 4).
+Static checks of the layer rules of `smartcer/core/`.
 
 No `print`, no `sys.exit`, no `assert` statements and no imports of `gymnasium` or `smartcer.gym`.
 """

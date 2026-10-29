@@ -1,7 +1,7 @@
 """
 Protocol of the forecast providers: future generation and load of the nodes and of the community.
 
-Forecasts enter only the observation (docs/refactor/REFACTOR_v1.md section 4). A provider is reset
+Forecasts enter only the observation. A provider is reset
 at every episode with the environment's random generator (`env.np_random`), so that a stochastic
 provider, e.g. one that simulates forecast errors, is reproducible from the episode seed.
 """

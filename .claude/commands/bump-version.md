@@ -28,12 +28,13 @@ Read `CHANGELOG.md` and extract the full content of the `## [Unreleased]` sectio
 
 If `[Unreleased]` is empty, warn the user: "Warning: [Unreleased] section is empty. Proceeding anyway."
 
-## Step 4: Update the two version files
+## Step 4: Update the two version files and the citation metadata
 
 Apply both edits atomically:
 
 1. **`pyproject.toml`**: change `version = "OLD"` → `version = "X.Y.Z"` (double quotes)
 2. **`smartcer/__init__.py`**: change `__version__ = 'OLD'` → `__version__ = 'X.Y.Z'` (single quotes)
+3. **Citation**: `version` in the `@software` BibTeX of `README.md` and `docs/citing.md` (and `year` if it changed), and `version` and `date-released` (today) in `CITATION.cff`
 
 ## Step 5: Update CHANGELOG.md
 
@@ -51,11 +52,13 @@ Where `YYYY-MM-DD` is today's date. Move all entries from the old `[Unreleased]`
 
 Run `make version` to confirm both version files are synchronized. If it fails, re-read both files, fix the mismatch, and run `make version` again.
 
+Then run `python -m pytest test/unit/test_citation_version.py`: it checks that the BibTeX of `README.md` and `docs/citing.md` and `CITATION.cff` carry the new version.
+
 ## Step 7: Stage and commit
 
 Stage exactly these files (no others):
 ```bash
-git add pyproject.toml smartcer/__init__.py CHANGELOG.md
+git add pyproject.toml smartcer/__init__.py CHANGELOG.md CITATION.cff README.md docs/citing.md
 ```
 
 Commit with:

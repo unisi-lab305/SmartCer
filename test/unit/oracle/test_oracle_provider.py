@@ -1,5 +1,5 @@
 """
-Tests of the oracle adapter `read_oracle` (provisional DIISM file format) and of `OracleProvider`
+Tests of the oracle adapter `read_oracle` (provisional file format) and of `OracleProvider`
 on the synthetic scenario (batteries pv_bat 5 kW and factory_bat 10 kW).
 """
 

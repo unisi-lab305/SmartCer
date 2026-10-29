@@ -10,22 +10,19 @@ battery; it receives an hourly incentive on the shared energy (*energia condivis
 between the total energy exported and the total energy imported by its members. An RL agent
 controls the batteries.
 
-**Status:** version 1.0.0, the refactoring of 0.6.2 that followed
-[docs/refactor/REFACTOR_v1.md](docs/refactor/REFACTOR_v1.md); progress, deviations and open
-questions are in [docs/refactor/PROGRESS.md](docs/refactor/PROGRESS.md). Phases 0-8 and the extra
-phase 7b are complete: the Gymnasium environment `SmartCer-v1` (`smartcer/gym/`, with its rewards,
+**Status:** version 1.0.1, beta, the rewrite of 0.6.2: the Gymnasium environment `SmartCer-v1` (`smartcer/gym/`, with its rewards,
 observation presets, baseline controllers, results tracking and KPIs) wraps the 1.0 physics and
 economics (`smartcer/core/`) and the scenario loader (`smartcer/data/`); forecast providers
 (`smartcer/forecasts/`: perfect, and simulated MMFE errors with provisional presets) feed the
 observation and the MILP oracle (`smartcer/oracle/`, provisional file format) feeds
 `info['privileged']`, the agent-oracle SoC gap and the replay check; all 0.6.2 modules were
 removed.
-One year of Leather takes about 3 s (`make bench`). Scenario and run arguments:
-[docs/CONFIG.md](docs/CONFIG.md).
+One year of hourly data with 10 nodes takes about 3 s (`make bench`). Scenario and run arguments:
+[docs/configuration.md](docs/configuration.md) (`docs/CONFIG.md` points to it).
 
 **Authoritative formulation:** [docs/FORMULATION.md](docs/FORMULATION.md) defines the physics, the
 economics and the reward of SmartCer 1.0. It prevails over the code and over the papers. Do not
-change the meaning of anything in it without asking Leonardo; any change to those equations must
+change the meaning of anything in it without asking the maintainers; any change to those equations must
 update the file in the same commit.
 
 **Repository**: <https://github.com/unisi-lab305/SmartCer>
@@ -72,9 +69,12 @@ make test                   # all tests (unit + integration)
 make test-unit              # test/unit/ only
 make test-integration       # test/integration/ only
 make test-coverage          # coverage report (terminal, htmlcov/, coverage.xml)
-make bench                  # step benchmark: one year of the local Leather scenario, 3 episodes
+make bench                  # step benchmark, 3 episodes; SCENARIO=<folder> (default: test/fixtures/mini_cer_v1)
 python benchmarks/bench_step.py --scenario <folder> --episodes 5 --observation extended
 python benchmarks/bench_step.py --forecast mmfe_standard --horizon 12   # with forecasts
+pip install -e .[docs]      # documentation dependencies (Sphinx, MyST, Furo)
+sphinx-build -W --keep-going -b html docs docs/_build/html   # build the site (docs/_build/ ignored)
+python examples/first_simulation.py   # quickstart code, on test/fixtures/mini_cer_v1 (checkout only)
 make version                # check that pyproject.toml and smartcer/__init__.py agree
 make clean                  # remove caches, coverage and build files
 
@@ -87,11 +87,6 @@ pre-commit run --all-files  # manual run
 
 Pre-commit hooks fix trailing whitespace and end-of-file newlines, validate YAML, JSON and TOML,
 reject large files and private keys, enforce LF line endings and sort imports with Ruff.
-
-**Reference values of 0.6.2:** `test/fixtures/local/` (gitignored) holds the hourly community series
-and the annual KPIs of 0.6.2 on the local Leather 2022 scenario with idle batteries. They were
-written in phase 0 by `scripts/make_reference_v062.py`, removed in phase 3 with the 0.6.2 modules
-it needs (run it from commit `d878969` to regenerate the files).
 
 ## Claude Code Commands
 
@@ -129,19 +124,8 @@ Two project skills are in `.claude/skills/`:
   asked otherwise, with no `Co-Authored-By` lines and no references to AI tools
 - Open a pull request only when asked; ask before pushing tags
 
-**Refactoring protocol** (until 1.0.0, details in `docs/refactor/REFACTOR_v1.md` section 0):
-
-- At the start of a session read `docs/refactor/REFACTOR_v1.md`, `docs/FORMULATION.md`,
-  `docs/refactor/PROGRESS.md` and this file
-- One phase per request, on a branch `refactor/v1-phase-<N>-<slug>` created from `main`; do not
-  start the next phase without an explicit go-ahead
-- Strangler approach: new modules are built next to the 0.6.2 ones, which stay untouched until
-  their replacement passes its tests
-- When the brief conflicts with the code or is ambiguous, stop and ask
-- `smartcer/cer_data/` (local scenarios, gitignored, partly confidential) is read-only; never
-  commit files derived from it at hourly resolution
-- The storage-node-environment repository (`../storage-node-environment`) is the reference for code
-  to port: copy and adapt, never import it, never modify it
+**Local data rule:** `smartcer/cer_data/` (local scenarios, gitignored, may be confidential) is
+read-only; never commit files derived from it at hourly resolution.
 
 **Documentation Maintenance**:
 
@@ -174,12 +158,11 @@ Two project skills are in `.claude/skills/`:
   with the CHANGELOG section as notes and the built files attached
 - **No PyPI step**: the publish step is a commented block in the workflow. PyPI publication is
   manual with `twine upload dist/*` (TestPyPI first), from the files of `python -m build`; the
-  first was 1.0.1 on 27/10/2026, which anticipated decision D11 (PyPI after 11/11/2026). Trusted
-  Publishing from the workflow is to be evaluated after 11/11/2026
+  first was 1.0.1 on 27/10/2026. Trusted Publishing from the workflow is to be evaluated
 - **Installation**: `pip install smartcer` (<https://pypi.org/project/smartcer/>); from a tag:
   `pip install git+https://github.com/unisi-lab305/SmartCer@vX.Y.Z`
 
-Local test data (`smartcer/cer_data/`, `test/fixtures/local/`) are absent in CI: tests that need
+Local test data (`smartcer/cer_data/`) are absent in CI: tests that need
 them are skipped.
 
 ## Version Management
@@ -194,7 +177,7 @@ This project follows [Semantic Versioning](https://semver.org/): **MAJOR.MINOR.P
 
 **Version numbers in both files MUST ALWAYS be identical** (`make version` checks them).
 
-The refactoring ended with `1.0.0` (phase 8); the tag `v0.6.2` marks the code before it.
+Version `1.0.0` is the rewrite of 0.6.2; the tag `v0.6.2` marks the code before it.
 
 ### Increment Rules
 
@@ -210,8 +193,11 @@ The refactoring ended with `1.0.0` (phase 8); the tag `v0.6.2` marks the code be
 2. **CLAUDE.md**: update affected sections for MINOR and MAJOR changes
 3. **Bump**: `/bump-version patch|minor|major`, or edit both files and run `make version`
 4. **Release**: `/release` (tag `vX.Y.Z`, GitHub Release); ask before pushing tags
+5. **Citation**: when bumping the version, update the version (and year if changed) in the BibTeX
+   of `README.md` and `docs/citing.md` and in `CITATION.cff` (version, date-released);
+   `test/unit/test_citation_version.py` enforces it
 
-Git tags mark released versions (`vX.Y.Z`). `v0.6.2` marks the code before the refactoring.
+Git tags mark released versions (`vX.Y.Z`). `v0.6.2` marks the code before the 1.0 rewrite.
 
 ## Package Structure
 
@@ -253,7 +239,6 @@ SmartCer/
 │   ├── conftest.py                 # shared fixtures, description of the synthetic scenario
 │   ├── fixtures/mini_cer/          # synthetic scenario, 0.6.2 format, 4 nodes, 48 h (committed)
 │   ├── fixtures/mini_cer_v1/       # the same scenario in the 1.0 format (committed)
-│   ├── fixtures/local/             # 0.6.2 reference values on Leather (gitignored)
 │   ├── unit/core/                  # layer rules of smartcer/core/; storage/, nodes/, community/
 │   ├── unit/data/                  # schema and loader on small scenarios written to tmp_path
 │   ├── unit/forecasts/             # PerfectForecast; MMFEForecast (statistical tests on many
@@ -262,17 +247,21 @@ SmartCer/
 │   ├── unit/gym/                   # observation features, normaliser, rewards, run configuration,
 │   │                               # actions and arguments, controllers, tracker, KPIs, Fit Score,
 │   │                               # forecast section and episode window
-│   ├── integration/data/           # mini_cer in both formats; Leather and the 0.6.2 reference
+│   ├── integration/data/           # mini_cer in both formats
 │   └── integration/gym/            # check_env (Gymnasium, SB3), episodes, rewards, timing,
 │                                   # normaliser window and one year in the space, baselines,
 │                                   # SB3 results callback, performance rules and benchmark,
-│                                   # oracle replay (synthetic and DIISM files), SAC (slow)
+│                                   # oracle replay (synthetic and local files), SAC (slow)
 ├── benchmarks/                     # bench_step.py (time per step and per episode)
-├── docs/                           # FORMULATION.md, CONFIG.md, refactor/REFACTOR_v1.md,
-│                                   # refactor/PROGRESS.md
+├── examples/                       # first_simulation.py (same code as docs/quickstart.md, README)
+├── docs/                           # Sphinx site: conf.py, index.md, installation.md, quickstart.md,
+│                                   # concepts.md, configuration.md, FORMULATION.md, kpis.md,
+│                                   # api.md, migration.md, citing.md, _static/; CONFIG.md only
+│                                   # points to configuration.md (excluded from the site)
+├── CITATION.cff                    # citation metadata (version and date-released, see tests)
 ├── .claude/commands/               # slash commands
 ├── .claude/skills/                 # project skills: new-scenario, milp-check
-└── .github/workflows/              # ci.yml, release.yml
+└── .github/workflows/              # ci.yml, release.yml, docs.yml (GitHub Pages)
 ```
 
 Run outputs go to a folder chosen by the caller, e.g. `results/` (gitignored).
@@ -330,7 +319,7 @@ Community(nodes, incentive, timestamps, delta_t, name)
            shared_energy_kwh, export_kwh, import_kwh, total)
 Node(node_id, node_type, delta_t, generation_kwh, load_kwh, sell_price, buy_price, battery=None,
      photovoltaic=None, category=None)
-    - charge_cap(t): `production` c = g, `surplus` c = max(0, g - l) (decision D6)
+    - charge_cap(t): `production` c = g, `surplus` c = max(0, g - l)
     - get_bounds(t) → (a_upper, a_lower); step(t, action=None) → NodeStep; reset()
 ```
 
@@ -445,7 +434,7 @@ OracleWarning                       rows with p_cha > 0 and p_dis > 0 (count, fi
   `node_id`, `p_cha_kw`, `p_dis_kw`, `soc_kwh`, one row per step and battery node) and optional
   `objective.csv` (`date`, `objective` in €, welfare per day). a* = p^cha / P^cha - p^dis / P^dis.
 
-**Performance rules** (phase 6, `test/integration/gym/test_env_performance.py`): no pandas code
+**Performance rules** (`test/integration/gym/test_env_performance.py`): no pandas code
 runs inside `step()` (nodes read preloaded Python floats, timestamps are a numpy array) and the
 observation is built once per step; measure changes with `benchmarks/bench_step.py`.
 
@@ -455,7 +444,7 @@ observation is built once per step; measure changes with `benchmarks/bench_step.
 Controller(env)                     bound to the unwrapped SmartCerEnv; reads env.community
     - reset(); act(observation, info) → actions for env.current_step, in [-1, 1]
 ├── NaiveController ('naive')       zero actions
-├── RBCController(env, mode='community')   FORMULATION section 13 ([M24] Algorithm 1);
+├── RBCController(env, mode='community')   FORMULATION section 13 ([M23] Algorithm 1);
 │                                   names 'rbc_node', 'rbc_community'
 └── ReplayController ('replay')     the oracle actions a* (env created with `oracle`); a bound
                                     violation ≤ 1e-6 kWh (REPLAY_TOLERANCE_KWH) is moved onto
@@ -488,15 +477,15 @@ fit_score(reference, candidate) → F (%), daily_welfare(community_table) → W 
   discharge min(-d, E^dis); a producer with g = 0 discharges E^dis. Mode `community` (reference
   baseline): balance B_t = Σ g - Σ l over all nodes, every battery charges (discharges) the same
   fraction min(1, |B_t| / Σ E) of its E^cha (E^dis). It reads g and l of step t from the
-  scenario, as in [M24].
+  scenario, as in [M23].
 - KPIs: welfare and its components, shared, exported and imported energy, sharing rate
   (shared / exported), coverage rate (shared / imported), battery charge, discharge, cell
   throughput, equivalent full cycles on S^max (`equivalent_full_cycles`) and on S^max - S^min
   (`efc_usable`), penalty mean, max and steps (> 1e-9) and, with an oracle, the absolute
   agent-oracle SoC gap per battery (`soc_gap_mean_kwh`, `soc_gap_max_kwh`). Rates are fractions.
 
-**Known defects** S1-S18 of 0.6.2 are listed in `docs/refactor/REFACTOR_v1.md` section 2; their
-regression tests on the new API are named `test_s<n>_*`. All 0.6.2 modules and their
+**Known defects** S1-S18 of 0.6.2 are the labels used in `docs/migration.md`; their regression
+tests on the new API are named `test_s<n>_*`. All 0.6.2 modules and their
 `xfail(strict=True)` tests are removed; S6 is `test_s6_rbc_executes_intended_energy`.
 
 ## Testing
@@ -513,10 +502,11 @@ regression tests on the new API are named `test_s<n>_*`. All 0.6.2 modules and t
   `test/conftest.py`); `write_scenario` (conftest) writes small 1.0 scenarios to `tmp_path`;
   `synthetic_oracle` (conftest) writes an oracle folder of `mini_cer_v1` (random feasible
   trajectory, its daily welfare as objective)
-- The oracle replay on the DIISM files runs for every `smartcer/cer_data/<scenario>/oracle/`
+- The oracle replay on local oracle files runs for every `smartcer/cer_data/<scenario>/oracle/`
   folder and is skipped when there is none
-- Loading the local Leather scenario raises a `TimestampWarning`: expect it with `pytest.warns`
-- Tests on local data (`test/fixtures/local/`, `smartcer/cer_data/`) skip when it is missing; tests
+- Loading a 0.6.2 scenario with irregular timestamps raises a `TimestampWarning`: expect it with
+  `pytest.warns`
+- Tests on local data (`smartcer/cer_data/`) skip when it is missing; tests
   on optional dependencies use `pytest.importorskip`
 - Known defects: `@pytest.mark.xfail(strict=True, raises=<expected exception>, reason='S<n>: ...')`;
   an unexpected pass fails the suite. When a defect is fixed in a new module, add a regression
@@ -599,10 +589,10 @@ implemented. Update it in the same commit as the change.
 | New or changed command or Make target | Development Commands, Claude Code Commands |
 | New config option or environment argument | Environment Registration and Installation |
 | New convention or test rule | Code Style Conventions, Testing |
-| Refactoring phase completed | Project Overview (status), and every section the phase touched |
+| Release or milestone completed | Project Overview (status), and every section it touched |
 | Breaking API change | All affected sections + migration notes |
 
 Before committing an update, check that code examples use current signatures, file paths exist,
 import statements match the package structure and version numbers are consistent. Files to keep in
-sync: `README.md`, `CHANGELOG.md`, `docs/FORMULATION.md`, `docs/refactor/PROGRESS.md`,
-`pyproject.toml`.
+sync: `README.md`, `CHANGELOG.md`, `CITATION.cff`, `docs/FORMULATION.md`,
+`docs/configuration.md`, `docs/citing.md`, `pyproject.toml`.

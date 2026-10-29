@@ -1,6 +1,5 @@
 """
-Replay controller: plays the optimal actions of the MILP oracle (docs/refactor/REFACTOR_v1.md
-phase 7).
+Replay controller: plays the optimal actions of the MILP oracle.
 """
 
 from typing import Any

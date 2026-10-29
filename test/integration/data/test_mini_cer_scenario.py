@@ -2,8 +2,8 @@
 Integration tests of loader, nodes and community on the synthetic scenario (described in
 `test/conftest.py`), in the 0.6.2 format (`mini_cer`) and the 1.0 format (`mini_cer_v1`).
 
-The first tests are the phase 0 characterisation tests (`test/integration/v062/
-test_characterisation.py`) re-pointed to the new API, with the `tip` incentive model.
+The first tests are the characterisation tests of the 0.6.2 behaviour, written against the new API
+with the `tip` incentive model.
 """
 
 import json
@@ -204,7 +204,7 @@ def test_v1_format_gives_the_same_results_as_v062(mini_cer_path: Path,
 
 def test_consumer_with_battery_loads_and_steps(mini_cer_v1_copy: Path) -> None:
     """
-    Test that a consumer with a battery loads and steps: under D6 it cannot charge (penalty 1 for
+    Test that a consumer with a battery loads and steps: under the `production` charge rule it cannot charge (penalty 1 for
     a full charge), but it can discharge what it holds.
 
     Args:

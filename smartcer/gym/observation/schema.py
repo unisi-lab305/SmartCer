@@ -10,7 +10,7 @@ lookback, normaliser). Sections, in this order:
 - `price`: `price/sell`, `price/buy`, one global pair, not normalised, when every node that sells
   has the same sell price series and every node that buys has the same buy price series;
   otherwise the prices are `<node_id>/sell_price` and `<node_id>/buy_price` inside each battery
-  node's block (a documented deviation from [M24], needed for scenarios such as Leather);
+  node's block (a documented deviation from [M23], needed when the nodes have different prices);
 - `community` (`extended` only): `community/generation` and `community/load`, the total
   generation and load of the nodes without a battery (each only if such nodes have it);
 - `nodes`: per battery node, in `storage_node_ids` order, [prices], `<node_id>/generation`,
@@ -27,7 +27,7 @@ lookback, normaliser). Sections, in this order:
   with the bounds of the current quantity (`community/generation`, `<node_id>/load`, ...). The
   purchase price is not forecast. Empty without a provider.
 
-Preset `meco` is [M24] Tab. II. Generation and load (also the aggregates, the lookback and the
+Preset `meco` is [M23] Tab. II. Generation and load (also the aggregates, the lookback and the
 forecasts) are min-max scaled with a `MinMaxNormalizer` fitted on a training window and clipped to
 [0, 1]; the number of clipped values of each step's observation is in `ObservationBuilder.clipped`
 (without the forecasts, which are counted when the observation is built:

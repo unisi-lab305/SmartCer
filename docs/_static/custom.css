@@ -1,0 +1,31 @@
+/*
+ * Wider content column on large screens.
+ *
+ * Furo fixes the layout in Sass (content 46em plus 3em of padding on each side, sidebar and
+ * "On this page" columns 15em): there is no CSS variable, so the widths that depend on each other
+ * are overridden together. Furo turns "On this page" into a drawer below 82em; the other
+ * breakpoints (sidebar drawer at 63em, mobile layout) are not touched. The content is at most 64em:
+ *
+ *   - 80em to 82em: the room left next to the 15em sidebar ("On this page" is a drawer here);
+ *   - above 82em: the room left next to the sidebar and the 15em "On this page" column, but not
+ *     less than Furo's 46em, so that neither column is squeezed;
+ *   - from about 101em (1616 px): 64em, centred as in Furo.
+ *
+ * The subtracted widths are the columns (15em, or 15em + 15em), the padding (6em) and 1em for a
+ * vertical scrollbar, which 100vw includes.
+ */
+@media (min-width: 80em) {
+  .content {
+    width: min(64em, calc(100vw - 22em));
+  }
+
+  .sidebar-drawer {
+    width: calc(50% - 35em);
+  }
+}
+
+@media (min-width: 82.01em) {
+  .content {
+    width: clamp(46em, calc(100vw - 37em), 64em);
+  }
+}

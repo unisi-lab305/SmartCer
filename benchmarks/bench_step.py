@@ -2,13 +2,13 @@
 Step benchmark of `SmartCerEnv`: whole-period episodes with random actions.
 
 Reports the construction time, then per episode the reset time, the time of the steps and the
-mean time per step, and the speed-up against SmartCer 0.6.2 (43 s for one year of Leather, defect
-S13 of docs/refactor/REFACTOR_v1.md). The random actions are drawn before the timed loop, so only
-the environment is measured.
+mean time per step, and the speed-up against SmartCer 0.6.2 (43 s for one year of hourly data with
+10 nodes, when the scenario has 8760 steps). The random actions are drawn before the timed loop, so
+only the environment is measured.
 
 Usage:
 
-    python benchmarks/bench_step.py                          # local Leather scenario, 3 episodes
+    python benchmarks/bench_step.py                          # synthetic scenario, 3 episodes
     python benchmarks/bench_step.py --scenario path/to/scenario --episodes 5 --observation extended
     python benchmarks/bench_step.py --forecast mmfe_standard --horizon 12   # with forecasts
 """
@@ -28,8 +28,8 @@ from smartcer.gym import SmartCerEnv
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_SCENARIO = REPO_ROOT / 'smartcer' / 'cer_data' / 'Leather'
-# one year of Leather with SmartCer 0.6.2 (S13)
+DEFAULT_SCENARIO = REPO_ROOT / 'test' / 'fixtures' / 'mini_cer_v1'
+# one year of hourly data with 10 nodes with SmartCer 0.6.2 (S13)
 REFERENCE_SECONDS = 43.0
 
 
@@ -72,7 +72,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser(description=__doc__.split('\n\n', maxsplit=1)[0])
     parser.add_argument('--scenario', type=Path, default=DEFAULT_SCENARIO,
-                        help='scenario folder (default: smartcer/cer_data/Leather)')
+                        help='scenario folder (default: test/fixtures/mini_cer_v1)')
     parser.add_argument('--episodes', type=int, default=3, help='number of episodes (default 3)')
     parser.add_argument('--seed', type=int, default=0, help='seed of the actions (default 0)')
     parser.add_argument('--observation', default='meco', help="observation preset (default 'meco')")
@@ -151,7 +151,7 @@ def main(argv: Sequence[str] | None = None) -> list[EpisodeTiming]:
     print(f'episode time: best {best:.2f} s, median {median:.2f} s; '
           f'{statistics.median(t.per_step_us for t in timings):.0f} µs per step (median)')
     if n_steps == 8760:
-        print(f'speed-up against 0.6.2 ({REFERENCE_SECONDS:.0f} s per year on Leather): '
+        print(f'speed-up against 0.6.2 ({REFERENCE_SECONDS:.0f} s per year of hourly data): '
               f'{REFERENCE_SECONDS / median:.1f}x (median)')
     return timings
 

@@ -1,0 +1,32 @@
+cff-version: 1.2.0
+message: If you use this software, please cite it using the metadata below.
+title: 'SmartCer: A Gymnasium Environment for Renewable Energy Communities'
+type: software
+authors:
+  - family-names: Guiducci
+    given-names: Leonardo
+version: 1.0.1
+date-released: '2026-10-27'
+license: MIT
+repository-code: https://github.com/unisi-lab305/SmartCer
+url: https://unisi-lab305.github.io/SmartCer/
+references:
+  - type: conference-paper
+    title: A Reinforcement Learning approach to the management of Renewable Energy Communities
+    authors:
+      - family-names: Guiducci
+        given-names: Leonardo
+      - family-names: Palma
+        given-names: Giulia
+      - family-names: Stentati
+        given-names: Marta
+      - family-names: Rizzo
+        given-names: Antonio
+      - family-names: Paoletti
+        given-names: Simone
+    collection-title: 2023 12th Mediterranean Conference on Embedded Computing (MECO)
+    year: 2023
+    pages: 8
+    start: 1
+    end: 8
+    doi: 10.1109/MECO58584.2023.10154979

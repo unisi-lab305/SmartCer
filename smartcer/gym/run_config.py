@@ -1,6 +1,6 @@
 """
 Mapping of the 0.6.2 run configuration (`cer_config`) to `SmartCerEnv` arguments
-(docs/refactor/REFACTOR_v1.md section 6, docs/CONFIG.md section 6).
+(docs/CONFIG.md section 6).
 """
 
 from typing import Any

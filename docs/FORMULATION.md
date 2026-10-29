@@ -1,12 +1,12 @@
 # SmartCer formulation
 
-**Version:** 1.0 (target of the 1.0 refactoring)
+**Version:** 1.0
 **Status:** authoritative reference for the physics and the economics implemented in `smartcer/core/` and for the reward in `smartcer/gym/rewards/`. Any change to those equations must update this file in the same commit.
 
 ## 1. Sources
 
 - [S22] M. Stentati, S. Paoletti, A. Vicino, *Optimization of energy communities in the Italian incentive system*, IEEE PES ISGT-Europe 2022. Battery dynamics, node energy balance, social welfare. This is the model of the MILP oracle used in training.
-- [M24] L. Guiducci, G. Palma, M. Stentati, A. Rizzo, S. Paoletti, *A Reinforcement Learning approach to the management of Renewable Energy Communities*, MECO 2024. Action definition, dynamic action bounds, constraint penalty, reward, actor state, rule-based controller, Fit Score.
+- [M23] L. Guiducci, G. Palma, M. Stentati, A. Rizzo, S. Paoletti, *A Reinforcement Learning approach to the management of Renewable Energy Communities*, MECO 2023. Action definition, dynamic action bounds, constraint penalty, reward, actor state, rule-based controller, Fit Score.
 
 Where the two papers differ, the battery dynamics of [S22] prevail, because the optimal actions computed by the MILP must be executable in the environment. Deviations are listed in section 14.
 
@@ -36,13 +36,13 @@ Where the two papers differ, the battery dynamics of [S22] prevail, because the 
 | P^cha_u, P^dis_u | maximum charge and discharge power, node side | kW | `storage.power_charge_max`, `storage.power_discharge_max` (0.6.2: `rated_power` for both) |
 | η^cha_u, η^dis_u | charge and discharge efficiency | – | `storage.efficiency_charge`, `storage.efficiency_discharge` (0.6.2: `efficiency` for both) |
 | α_u | self-discharge per hour (fraction of the state of charge lost in one hour) | – | `storage.alpha` (default 0; 0.6.2: `alfa`, per hourly step) |
-| σ | penalty coefficient | – | `reward.penalty_coefficient` (default 10, as in [M24]) |
+| σ | penalty coefficient | – | `penalty_coefficient`, argument of the environment (default 10, as in [M23]) |
 | s_{u,t} | state of charge at the end of step t | kWh | state |
 | a_{u,t} | normalised action | – | action |
 
 ## 4. Action and battery power
 
-One action per node with a battery, a_{u,t} ∈ [−1, 1], in the fixed order `storage_node_ids`. Positive values charge, negative values discharge ([M24] Sec. III-A, with separate limits as in [S22] eq. 4-5):
+One action per node with a battery, a_{u,t} ∈ [−1, 1], in the fixed order `storage_node_ids`. Positive values charge, negative values discharge ([M23] Sec. III-A, with separate limits as in [S22] eq. 4-5):
 
 $$
 p^{cha}_{u,t} = \max(0, a_{u,t})\, P^{cha}_u, \qquad p^{dis}_{u,t} = \max(0, -a_{u,t})\, P^{dis}_u
@@ -78,14 +78,14 @@ $$
 
 The charge cap c_{u,t} depends on `storage.charge_limit`:
 
-- `production` (default, [M24] eq. 1): c_{u,t} = g_{u,t};
-- `surplus` (option, pending the DIISM answer): c_{u,t} = max(0, g_{u,t} − l_{u,t}).
+- `production` (default, [M23] eq. 1): c_{u,t} = g_{u,t};
+- `surplus` (option): c_{u,t} = max(0, g_{u,t} − l_{u,t}).
 
 Feasible actions lie in [−A^lower_{u,t}, A^upper_{u,t}].
 
 ## 7. Clipping and constraint penalty
 
-An action outside the feasible interval is replaced by the nearest bound before it is applied, and penalised ([M24] eq. 6-7):
+An action outside the feasible interval is replaced by the nearest bound before it is applied, and penalised ([M23] eq. 6-7):
 
 $$
 k_{u,t} = \begin{cases} \max(0,\ a_{u,t} - A^{upper}_{u,t}) & a_{u,t} > 0 \\ \max(0,\ |a_{u,t}| - A^{lower}_{u,t}) & a_{u,t} < 0 \\ 0 & a_{u,t} = 0 \end{cases} \qquad K_t = \frac{1}{|U_b|} \sum_{u \in U_b} k_{u,t}
@@ -113,7 +113,7 @@ $$
 
 Incentive I_t, selected with `incentive.model`:
 
-- `uniform` (default for 1.0 scenarios, [S22] and [M24]):
+- `uniform` (default for 1.0 scenarios, [S22] and [M23]):
 
 $$
 I_t = \pi^{inc}_t\, E^{sh}_t
@@ -135,9 +135,28 @@ $$
 
   P^z_{u,t} is approximated by the node's sell price π^egr_{u,t}; PNRR_u ≤ 40 (percentage of capital grant); TIP^base_u, TIP^th_u, f^zone_u in €/kWh from `photovoltaic` (`tip_base`, `tip_threshold`, `fi_zone`, `pnrr`). With equal coefficients c_{u,t} = π^inc_t for every exporting node the two models coincide.
 
+The `tip` model follows the premium tariff of the Italian incentive for renewable energy
+communities (Ministerial Decree 7 December 2023, n. 414), paid for 20 years on the shared energy.
+Its parameters, per plant:
+
+- `tip_base`, the fixed part, set by the plant's size: 0.08 €/kWh up to 200 kW, 0.07 €/kWh from
+  200 to 600 kW, 0.06 €/kWh above 600 kW;
+- the variable part max(0, 0.180 − P^z), larger when the zonal price P^z is low; SmartCer
+  approximates P^z with the node's sell price;
+- `tip_threshold`, the cap on fixed plus variable part: 0.12, 0.11 and 0.10 €/kWh for the same
+  size classes;
+- `fi_zone`, a correction for photovoltaic plants in the central (0.004 €/kWh) and northern
+  (0.010 €/kWh) regions, which have less irradiance;
+- `pnrr`, the capital grant received by the plant (for example from the PNRR), as a percentage of
+  the investment up to 40: the tariff is reduced by a factor that grows linearly from 0 with no
+  grant to 0.5 with a 40 % grant, hence the term 1 − 0.5 · PNRR_u / 40.
+
+The values are scenario parameters: SmartCer does not check them against the decree. The
+valorisation of shared energy set by ARERA, paid together with the incentive, is not modelled.
+
 ## 10. Social welfare
 
-[M24] eq. 3, that is [S22] eq. 14 without the flexibility terms:
+[M23] eq. 3, that is [S22] eq. 14 without the flexibility terms:
 
 $$
 W_t = \sum_{u} \Big[ \pi^{egr}_{u,t}\, e^{gri}_{u,t} - \pi^{igr}_{u,t}\, i^{gri}_{u,t} - \pi^{sto}_u\, \Delta T \Big( \eta^{cha}_u\, p^{cha}_{u,t} + \frac{1}{\eta^{dis}_u}\, p^{dis}_{u,t} \Big) \Big] + I_t
@@ -147,7 +166,7 @@ The storage term charges the energy that enters or leaves the cell. Producers ha
 
 ## 11. Reward
 
-Default reward type `welfare` ([M24] eq. 8):
+Default reward type `welfare` ([M23] eq. 8):
 
 $$
 R_t = W_t - \sigma\, K_t
@@ -173,14 +192,14 @@ No running reward scaling inside the environment; scaling, if wanted, is applied
 
 Controlled by `observe_current_step`:
 
-- `True` (as in [M24]): when the agent chooses a_{u,t}, the observation contains g_{u,t}, l_{u,t}, the prices of step t and the bounds A^upper_{u,t}, A^lower_{u,t} of section 6.
+- `True` (as in [M23]): when the agent chooses a_{u,t}, the observation contains g_{u,t}, l_{u,t}, the prices of step t and the bounds A^upper_{u,t}, A^lower_{u,t} of section 6.
 - `False` (causal): the observation contains g and l of step t − 1; prices of step t remain observable (day-ahead sell prices, fixed buy prices); the observed A^upper is computed without the charge-cap term so that it does not reveal g_{u,t}. The environment still applies the full bounds of section 6 when clipping.
 
 Forecasts, when added, cover steps t + 1 … t + H with `True` and t … t + H − 1 with `False`.
 
 ## 13. Baseline controller and comparison metric
 
-**Rule-based controller** ([M24] Algorithm 1), computed in energy (node side) and converted to an action. It reads g and l of step t. The energies a battery can take and deliver in step t are those of the dynamic bounds of section 6 (power limits, charge cap, efficiencies, S^min, S^max, self-discharge):
+**Rule-based controller** ([M23] Algorithm 1), computed in energy (node side) and converted to an action. It reads g and l of step t. The energies a battery can take and deliver in step t are those of the dynamic bounds of section 6 (power limits, charge cap, efficiencies, S^min, S^max, self-discharge):
 
 $$
 E^{cha}_{u,t} = A^{upper}_{u,t}\, P^{cha}_u\, \Delta T, \qquad E^{dis}_{u,t} = A^{lower}_{u,t}\, P^{dis}_u\, \Delta T
@@ -192,16 +211,16 @@ A charge energy x gives the action x / (P^cha_u ΔT), a discharge energy x the a
   - if u is a producer and g_{u,t} = 0: discharge E^dis_{u,t} (rule of 0.6.2; with d = g a producer would never discharge);
   - otherwise, if d ≥ 0: charge min(d, E^cha_{u,t});
   - otherwise: discharge min(−d, E^dis_{u,t}).
-- **`community`** (the batteries follow the community balance; class A reference baseline), with B_t = Σ_{u ∈ U} g_{u,t} − Σ_{u ∈ U} l_{u,t} over all nodes:
+- **`community`** (the batteries follow the community balance; reference baseline), with B_t = Σ_{u ∈ U} g_{u,t} − Σ_{u ∈ U} l_{u,t} over all nodes:
   - if B_t > 0: every battery charges f E^cha_{u,t} with f = min(1, B_t / Σ_{v ∈ U_b} E^cha_{v,t}), that is min(B_t, Σ E^cha) split pro rata to E^cha;
   - if B_t < 0: every battery discharges f E^dis_{u,t} with f = min(1, −B_t / Σ_{v ∈ U_b} E^dis_{v,t});
   - if B_t = 0, or the sum is 0: idle.
 
-  With `charge_limit: production` a battery may charge from its own node's generation while that node imports (B_t > 0 but g_{u,t} < l_{u,t}): the charge respects c_{u,t} = g_{u,t} (decision D6), and under the virtual sharing model the extra import is covered by the community surplus. This depends on the DIISM answer on the charge rule for prosumers (section 15).
+  With `charge_limit: production` a battery may charge from its own node's generation while that node imports (B_t > 0 but g_{u,t} < l_{u,t}): the charge respects c_{u,t} = g_{u,t}, and under the virtual sharing model the extra import is covered by the community surplus.
 
 The rule-based controller is a reference, not a lower bound: it is not required to beat idle batteries.
 
-**Fit Score** ([M24] eq. 11) between the daily welfare series of a reference T1 (the MILP oracle) and of a controller T2:
+**Fit Score** ([M23] eq. 11) between the daily welfare series of a reference T1 (the MILP oracle) and of a controller T2:
 
 $$
 F = \Big( 1 - \frac{\sum_d (T_{2,d} - T_{1,d})^2}{\sum_d (T_{1,d} - \overline{T_1})^2} \Big) \cdot 100
@@ -211,25 +230,10 @@ $$
 
 | Item | Papers | SmartCer 1.0 | Reason |
 |---|---|---|---|
-| Dynamic bounds | [M24] eq. 1-2 use (c − SoC)/ΔT and SoC/ΔT, without η or S^min | derived from [S22] dynamics, with η and S^min (section 6) | the [M24] bounds allow a discharge that drives the state of charge below S^min (defect of 0.6.2) |
-| Power rating | [M24]: a single rated power r_u | separate P^cha_u and P^dis_u as in [S22]; P^cha = P^dis = r_u recovers [M24] | generality at no cost |
+| Dynamic bounds | [M23] eq. 1-2 use (c − SoC)/ΔT and SoC/ΔT, without η or S^min | derived from [S22] dynamics, with η and S^min (section 6) | the [M23] bounds allow a discharge that drives the state of charge below S^min (defect of 0.6.2) |
+| Power rating | [M23]: a single rated power r_u | separate P^cha_u and P^dis_u as in [S22]; P^cha = P^dis = r_u recovers [M23] | generality at no cost |
 | Incentive | uniform π^inc_t | `uniform` (default) and `tip` | the default must match the MILP objective |
-| SoC in the actor state | [M24] Tab. II lists a "periodic" encoder | scaled to [S^min, S^max] | likely typo in the table |
-| End-of-day constraints | [M24]: batteries empty at the start and end of each day in the MILP | none; S^end not modelled | class A decision of 14/10/2026 |
+| SoC in the actor state | [M23] Tab. II lists a "periodic" encoder | scaled to [S^min, S^max] | likely typo in the table |
+| End-of-day constraints | [M23]: batteries empty at the start and end of each day in the MILP | none; S^end not modelled | simplification |
 | Contracted grid limits | [S22] eq. 10-11 | not modelled | not binding with the charge rule and fixed loads |
-| Demand and generation flexibility | [S22] eq. 1-3, costs π^reg, π^fle | not modelled | shiftable loads are handled by the DIISM, not by RL |
-
-## 15. Pending confirmations from the DIISM
-
-Defaults used until the answers arrive (questions in the project knowledge base, `SmartCer_domande_DIISM.md`):
-
-| Item | Default |
-|---|---|
-| Charge rule for prosumers | `production` |
-| Power limits | node side for both charge and discharge |
-| π^inc for the Molise scenario | constant, value from the scenario config |
-| π^sto | 0.01 €/kWh in the Molise scenario config; 0 when absent |
-| S^ini | S^min |
-| Self-discharge | none |
-| Contracted grid limits | not active |
-| Welfare terms beyond eq. 14 | none |
+| Demand and generation flexibility | [S22] eq. 1-3, costs π^reg, π^fle | not modelled | shiftable loads are outside the scope of the RL agent |

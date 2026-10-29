@@ -1,8 +1,8 @@
 """
 Unit tests of `smartcer.core.community.incentives` (docs/FORMULATION.md section 9).
 
-The TIP coefficient cases are those of the 0.6.2 characterisation tests
-(`test/unit/v062/test_tip_coefficient.py`), re-pointed to the new function.
+The TIP coefficient cases are those of the 0.6.2 characterisation tests, applied to the new
+function.
 """
 
 import numpy as np

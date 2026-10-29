@@ -5,7 +5,7 @@ description: Create a new SmartCer scenario in the 1.0 format, smartcer/cer_data
 
 # New scenario
 
-Create `smartcer/cer_data/<name>/` in the 1.0 format of `docs/CONFIG.md` (sections 1-3), check
+Create `smartcer/cer_data/<name>/` in the 1.0 format of `docs/configuration.md` (sections 1-3), check
 its CSV files, and run one episode. The argument, if any, is the scenario name: `$ARGUMENTS`.
 
 ## Rules
@@ -57,7 +57,7 @@ Stop and report if a file fails these checks; propose the fix, but do not edit t
 ## Step 3: Write config.json
 
 Write `smartcer/cer_data/<name>/config.json` with `format_version: "1.0"`, `name`, `delta_t`,
-`units`, `incentive` and `nodes`. Use the example of `docs/CONFIG.md` section 1 as the template.
+`units`, `incentive` and `nodes`. Use the example of `docs/configuration.md` section 1 as the template.
 Node order is the order in `nodes`; the order of the actions is that of the nodes with a battery.
 
 ## Step 4: Validate and run one episode

@@ -134,7 +134,7 @@ class ReplayCheck:
         steps: Steps replayed.
         penalty_max: Largest K_t.
         penalty_steps: Steps with K_t above `PENALTY_TOLERANCE` (1e-9).
-        soc_error_max_kwh: Largest |s_t - s*_t| between the replayed and the oracle state of
+        soc_error_max_kwh: Largest ``|s_t - s*_t|`` between the replayed and the oracle state of
             charge, over steps and batteries (kWh).
         simultaneous_rows: Oracle rows of the period (step and battery) with both p^cha > 0 and
             p^dis > 0, which the replay cannot reproduce (`OracleProvider.simultaneous_rows`).
@@ -145,7 +145,7 @@ class ReplayCheck:
         welfare: Cumulative welfare of the replay Σ_t W_t (€).
         objective: Cumulative MILP objective of the days of the period (€), or None without an
             objective file.
-        relative_gap: |welfare - objective| / |objective|, or None without an objective.
+        relative_gap: ``|welfare - objective| / |objective|``, or None without an objective.
         rtol: Relative tolerance of the welfare check.
         fit_score: Fit Score of the replay's daily welfare against the daily objective, or None
             (no objective, fewer than two days, or a constant objective).

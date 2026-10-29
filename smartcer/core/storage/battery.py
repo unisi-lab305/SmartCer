@@ -99,7 +99,7 @@ class Battery(StorageSystem):
         'capacity', 'power_charge_max', 'power_discharge_max', 'efficiency_charge',
         'efficiency_discharge', 'soc_min', 'soc_initial', 'alpha', 'usage_cost', 'charge_limit',
     })
-    # 0.6.2 key → 1.0 keys it maps to (docs/refactor/REFACTOR_v1.md section 6)
+    # 0.6.2 key → 1.0 keys it maps to
     LEGACY_KEYS: ClassVar[dict[str, tuple[str, ...]]] = {
         'rated_power': ('power_charge_max', 'power_discharge_max'),
         'efficiency': ('efficiency_charge', 'efficiency_discharge'),
@@ -189,7 +189,7 @@ class Battery(StorageSystem):
 
         1.0 keys: see `CONFIG_KEYS` (docs/FORMULATION.md section 3). 0.6.2 keys are mapped with a
         DeprecationWarning: `rated_power` → both power limits, `efficiency` → both efficiencies,
-        `alfa` → `alpha`; `beta` (degradation) is read and ignored (decision D7); `soc_min` is a
+        `alfa` → `alpha`; `beta` (degradation) is read and ignored; `soc_min` is a
         fraction in both formats.
 
         Args:

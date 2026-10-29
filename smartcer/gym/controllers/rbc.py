@@ -1,5 +1,5 @@
 """
-Rule-based controller of [M24] Algorithm 1, per node or on the community balance
+Rule-based controller of [M23] Algorithm 1, per node or on the community balance
 (docs/FORMULATION.md section 13).
 
 Replaces the 0.6.2 `StandardRBC`, which divided the energy by the capacity instead of the power
@@ -36,7 +36,7 @@ class RBCController(Controller):
       charges min(B_t, Σ E^cha) split pro rata to E^cha_u; B_t < 0 discharges min(-B_t, Σ E^dis)
       split pro rata to E^dis_u. This is the class A reference baseline.
 
-    The controller reads g and l of step t from the scenario, as in [M24], whatever
+    The controller reads g and l of step t from the scenario, as in [M23], whatever
     `observe_current_step` is.
 
     Attributes:

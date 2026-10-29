@@ -1,5 +1,5 @@
 """
-Normaliser fitted on a training window and observations over a whole year (phase 4 acceptance).
+Normaliser fitted on a training window and observations over a whole year.
 """
 
 from collections.abc import Callable
@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from smartcer.data import TimestampWarning
 from smartcer.gym import SmartCerEnv
 from smartcer.gym.observation import MinMaxNormalizer
 
@@ -164,20 +163,3 @@ def test_every_observation_of_a_year_lies_in_the_space(
     assert generation.max() > env.normalizer.bounds['pros_bat/generation'][1]
     assert env.episode_length == 8760
     assert run_year(env, seed=5) == 0
-
-
-def test_every_observation_of_leather_lies_in_the_space(leather_path: Path) -> None:
-    """
-    Test one year of the local Leather scenario (skipped when missing) with the extended preset,
-    lookback 3, causal timing and a normaliser fitted on the first half of 2022.
-
-    Args:
-        leather_path: Path of the local Leather scenario.
-    """
-    with pytest.warns(TimestampWarning):
-        env = SmartCerEnv(leather_path, observation='extended', lookback=3,
-                          observe_current_step=False,
-                          normalizer_window=(None, '2022-06-30 23:00'))
-
-    assert env.episode_length == 8760
-    assert run_year(env, seed=7) == 0

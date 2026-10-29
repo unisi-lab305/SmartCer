@@ -28,8 +28,8 @@ test-coverage: ## Run tests with coverage report
 	@echo "Coverage report generated in htmlcov/index.html"
 
 # benchmark
-bench: ## Run the step benchmark (one year of the local Leather scenario, 3 episodes)
-	python benchmarks/bench_step.py
+bench: ## Run the step benchmark, 3 episodes (SCENARIO=<folder>, default: test/fixtures/mini_cer_v1)
+	python benchmarks/bench_step.py $(if $(SCENARIO),--scenario $(SCENARIO),)
 
 # utility targets
 version: ## Verify version consistency between pyproject.toml and smartcer/__init__.py

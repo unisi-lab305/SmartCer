@@ -1,6 +1,6 @@
 """
-Replay of the MILP oracle (phase 7): `info['privileged']`, `ReplayController` and `check_replay`
-on a synthetic oracle trajectory (fixture `synthetic_oracle`), and on the DIISM files when they
+Replay of the MILP oracle: `info['privileged']`, `ReplayController` and `check_replay`
+on a synthetic oracle trajectory (fixture `synthetic_oracle`), and on local oracle files when they
 are present in `smartcer/cer_data/<scenario>/oracle/` (skipped otherwise).
 """
 
@@ -21,14 +21,14 @@ from smartcer.oracle import OracleProvider, OracleWarning, read_oracle
 pytestmark = pytest.mark.integration
 
 CER_DATA_PATH = Path(__file__).parents[3] / 'smartcer' / 'cer_data'
-# relative tolerance of the cumulative welfare against the MILP objective (brief, phase 7)
+# relative tolerance of the cumulative welfare against the MILP objective 
 RTOL = 1e-3
 
 
 def test_replay_of_a_synthetic_oracle_trajectory(mini_cer_v1_path: Path, synthetic_oracle: Path,
                                                  tmp_path: Path) -> None:
     """
-    Test the acceptance check of phase 7 on a synthetic trajectory: playing a* over the 48 steps
+    Test the replay check on a synthetic trajectory: playing a* over the 48 steps
     gives K_t = 0 at every step, the oracle states of charge and a cumulative welfare within
     1e-3 of the objective (here equal up to round-off), and writes the per-day comparison.
 
@@ -249,9 +249,9 @@ def test_replay_needs_an_oracle_and_the_whole_period(mini_cer_v1_path: Path,
     assert (tmp_path / 'baselines' / 'replay' / 'community.csv').is_file()
 
 
-def test_replay_of_the_diism_oracle(tmp_path: Path) -> None:
+def test_replay_of_local_oracle_files(tmp_path: Path) -> None:
     """
-    Test the replay on the DIISM MILP outputs of every local scenario that has them
+    Test the replay on the MILP outputs of every local scenario that has them
     (`smartcer/cer_data/<scenario>/oracle/trajectory.csv`, optional `objective.csv`), over the
     period the oracle covers: K_t = 0 at every step and, with an objective, a cumulative welfare
     within 1e-3. Skipped when no scenario has oracle files.
@@ -261,7 +261,7 @@ def test_replay_of_the_diism_oracle(tmp_path: Path) -> None:
     """
     folders = sorted(p.parent for p in CER_DATA_PATH.glob('*/oracle/trajectory.csv'))
     if not folders:
-        pytest.skip('no DIISM oracle files in smartcer/cer_data/<scenario>/oracle/')
+        pytest.skip('no oracle files in smartcer/cer_data/<scenario>/oracle/')
     for folder in folders:
         index = read_oracle(folder).p_cha_kw.index
         with warnings.catch_warnings():

@@ -80,7 +80,7 @@ The node table holds the signed gap `soc_gap_kwh` = s_{u,t+1} − s\*_{u,t+1}.
 
 ## Fit Score
 
-`smartcer.gym.metrics.fit_score(reference, candidate)`, [M24] eq. 11 (FORMULATION section 13),
+`smartcer.gym.metrics.fit_score(reference, candidate)`, [M23] eq. 11 (FORMULATION section 13),
 compares the daily welfare series of a reference T1 (the MILP oracle) and of a controller T2
 (`daily_welfare(community_table)` sums W_t per calendar day):
 
@@ -92,4 +92,4 @@ it is farther. It is undefined for a constant reference (`ValueError`).
 ## Other values
 
 `steps` is the number of steps of the episode. The community table of a run also has, per step,
-`obs_clipped`: the number of observation values clipped to [0, 1] (`docs/CONFIG.md` section 6).
+`obs_clipped`: the number of observation values clipped to [0, 1] (`docs/configuration.md` section 6).

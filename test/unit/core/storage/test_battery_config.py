@@ -1,6 +1,6 @@
 """
 Unit tests of `Battery.from_config` with the 1.0 and the 0.6.2 storage keys
-(docs/FORMULATION.md section 3, docs/refactor/REFACTOR_v1.md section 6).
+(docs/FORMULATION.md section 3).
 """
 
 from typing import Any
@@ -13,7 +13,7 @@ from smartcer.core.storage import Battery
 
 pytestmark = pytest.mark.unit
 
-LEATHER_STORAGE = {
+LEGACY_STORAGE = {
     'capacity': 100, 'rated_power': 30, 'soc_min': 0.1, 'efficiency': 0.98, 'alfa': 0.0,
     'beta': 0.0,
 }
@@ -53,11 +53,11 @@ def test_from_config_v1_defaults() -> None:
 
 def test_from_config_legacy_keys_are_mapped_with_warning() -> None:
     """
-    Test the 0.6.2 mapping on the Leather storage section: rated_power → both power limits,
+    Test the 0.6.2 mapping on a 0.6.2 storage section: rated_power → both power limits,
     efficiency → both efficiencies, alfa → alpha, beta ignored, soc_initial = soc_min.
     """
     with pytest.warns(DeprecationWarning, match='rated_power') as record:
-        battery = Battery.from_config(LEATHER_STORAGE)
+        battery = Battery.from_config(LEGACY_STORAGE)
 
     message = str(record[0].message)
     assert 'efficiency' in message and 'alfa' in message and 'beta ignored' in message
@@ -70,9 +70,9 @@ def test_from_config_legacy_keys_are_mapped_with_warning() -> None:
 
 def test_from_config_beta_is_ignored() -> None:
     """
-    Test that a non-zero 0.6.2 degradation coefficient has no effect (decision D7).
+    Test that a non-zero 0.6.2 degradation coefficient has no effect.
     """
-    config = {**LEATHER_STORAGE, 'beta': 0.5}
+    config = {**LEGACY_STORAGE, 'beta': 0.5}
 
     with pytest.warns(DeprecationWarning, match='beta ignored'):
         battery = Battery.from_config(config)
@@ -86,10 +86,10 @@ def test_from_config_beta_is_ignored() -> None:
 @pytest.mark.parametrize(
     ('config', 'match'),
     [
-        ({**LEATHER_STORAGE, 'power_charge_max': 30}, 'conflicts'),
-        ({**LEATHER_STORAGE, 'capactiy': 100}, 'unknown storage keys'),
+        ({**LEGACY_STORAGE, 'power_charge_max': 30}, 'conflicts'),
+        ({**LEGACY_STORAGE, 'capactiy': 100}, 'unknown storage keys'),
         ({'capacity': 10, 'power_charge_max': 5, 'power_discharge_max': 5}, 'missing'),
-        ({**LEATHER_STORAGE, 'efficiency': 1.5}, 'efficiency_charge'),
+        ({**LEGACY_STORAGE, 'efficiency': 1.5}, 'efficiency_charge'),
     ],
 )
 def test_from_config_errors(config: dict[str, Any], match: str) -> None:

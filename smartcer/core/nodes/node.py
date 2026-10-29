@@ -202,7 +202,7 @@ class Node:
 
     def charge_cap(self, t: int) -> float:
         """
-        Charge cap c of step t (docs/FORMULATION.md section 6, decision D6).
+        Charge cap c of step t (docs/FORMULATION.md section 6).
 
         `production`: c = g; `surplus`: c = max(0, g - l).
 
