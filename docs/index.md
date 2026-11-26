@@ -7,12 +7,6 @@ shared energy (*energia condivisa*), the minimum between the energy its members 
 and the energy they take from it. A reinforcement learning agent controls the batteries to
 maximise the social welfare of the community.
 
-```{admonition} Beta
-:class: warning
-SmartCer 1.0.1 is a beta release: validation against a MILP reference trajectory is in progress.
-The MILP oracle file format and the forecast error presets are provisional.
-```
-
 ```bash
 pip install smartcer
 ```

@@ -10,11 +10,11 @@ battery; it receives an hourly incentive on the shared energy (*energia condivis
 between the total energy exported and the total energy imported by its members. An RL agent
 controls the batteries.
 
-**Status:** version 1.0.1, beta, the rewrite of 0.6.2: the Gymnasium environment `SmartCer-v1` (`smartcer/gym/`, with its rewards,
+**Status:** version 1.0.1, stable, the rewrite of 0.6.2: the Gymnasium environment `SmartCer-v1` (`smartcer/gym/`, with its rewards,
 observation presets, baseline controllers, results tracking and KPIs) wraps the 1.0 physics and
 economics (`smartcer/core/`) and the scenario loader (`smartcer/data/`); forecast providers
-(`smartcer/forecasts/`: perfect, and simulated MMFE errors with provisional presets) feed the
-observation and the MILP oracle (`smartcer/oracle/`, provisional file format) feeds
+(`smartcer/forecasts/`: perfect, and simulated MMFE errors with default presets) feed the
+observation and the MILP oracle (`smartcer/oracle/`) feeds
 `info['privileged']`, the agent-oracle SoC gap and the replay check; all 0.6.2 modules were
 removed.
 One year of hourly data with 10 nodes takes about 3 s (`make bench`). Scenario and run arguments:
@@ -410,7 +410,7 @@ ForecastProvider (Protocol): reset(rng), get(t, horizon) → {key: H values}, ke
         PV: clip(y + r e, 0, peak), r = monthly mean at that time of day; load: max(y (1 + e), 0)
 MMFEParameters(sigma_generation, sigma_load, rho, phi, bias_generation, bias_load,
                sigma_overrides={})   per-series σ by forecast key, e.g. {'community/load': 0.02}
-MMFE_PRESETS                        'perfect', 'standard', 'noisy' (provisional values)
+MMFE_PRESETS                        'perfect', 'standard', 'noisy' (default error levels)
 FORECAST_PROVIDERS                  read-only registry: 'perfect', 'mmfe_<preset>' → factory
                                     taking the community
 read_oracle(folder) → OracleData    the only function that knows the oracle file format
@@ -430,7 +430,7 @@ OracleWarning                       rows with p_cha > 0 and p_dis > 0 (count, fi
   `soc_initial_tolerance_kwh` (default 1e-3 kWh, `SOC_INITIAL_TOLERANCE_KWH`), else `ValueError`.
 - MMFE: lead time 1 carries one innovation, only the observation (lead 0) is exact; the
   generation and load factors are independent (a documented limitation).
-- Oracle folder (provisional format, docs/CONFIG.md section 6): `trajectory.csv` (`datetime`,
+- Oracle folder (docs/CONFIG.md section 6): `trajectory.csv` (`datetime`,
   `node_id`, `p_cha_kw`, `p_dis_kw`, `soc_kwh`, one row per step and battery node) and optional
   `objective.csv` (`date`, `objective` in €, welfare per day). a* = p^cha / P^cha - p^dis / P^dis.
 

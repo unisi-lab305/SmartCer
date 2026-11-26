@@ -107,7 +107,7 @@ class MMFEParameters:
             raise ValueError(f'MMFE parameter phi must lie in (-1, 1), got {self.phi}')
 
 
-# provisional values, to be calibrated (docs/CONFIG.md section 6)
+# default error levels; custom values with MMFEParameters (docs/configuration.md section 6)
 MMFE_PRESETS: MappingProxyType[str, MMFEParameters] = MappingProxyType({
     'perfect': MMFEParameters(sigma_generation=0.0, sigma_load=0.0),
     'standard': MMFEParameters(sigma_generation=0.07, sigma_load=0.03, rho=0.5, phi=0.8),

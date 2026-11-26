@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Status moved from beta to Production/Stable (`Development Status :: 5`) after the MILP oracle
+  replay passed: the Beta notes of the site and the README are removed, and the oracle file format
+  and the MMFE presets are no longer marked provisional (the presets are default error levels)
+- The acknowledgements of the site state the SUMMA project in full
 - `Documentation` project URL points to the site
 - The README is reduced to description, installation, quick start and citation; the migration
   tables from 0.6.2 are in `docs/migration.md`

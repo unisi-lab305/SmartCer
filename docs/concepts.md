@@ -153,7 +153,8 @@ env = gym.make('SmartCer-v1', scenario='path/to/scenario',
 
 The MMFE providers (`smartcer.forecasts.MMFEForecast`) add errors with the martingale model of
 forecast evolution: the innovations of each target step are drawn once per episode, so the error
-variance grows with the lead time. The preset parameters are **provisional**:
+variance grows with the lead time. The presets are default error levels; to match your own
+forecasts, fit the parameters with `MMFEParameters`:
 
 | Preset | `sigma_generation` | `sigma_load` | `rho` | `phi` |
 |---|---|---|---|---|
@@ -188,7 +189,7 @@ with `bias_generation` and `bias_load`. All parameters are described in the
 ## MILP oracle
 
 An optional folder of optimal battery trajectories computed by a MILP, passed as `oracle=`. The
-file format is **provisional**:
+file format is:
 
 ```text
 oracle/
