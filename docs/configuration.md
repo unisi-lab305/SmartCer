@@ -284,15 +284,15 @@ members), should have a smaller relative σ than a single member: the independen
 members' errors partly cancel (for n members with equal, independent errors the relative σ of the
 sum is σ / √n). Set it with `sigma_overrides`.
 
-Presets (`MMFE_PRESETS`, environment names `'mmfe_<preset>'`). **The values are provisional,
-pending calibration on forecast data**; with H = 12 they give an error standard deviation at lead
+Presets (`MMFE_PRESETS`, environment names `'mmfe_<preset>'`). They are default error levels,
+not fitted to a specific forecast dataset (custom values with `MMFEParameters`, below); with H = 12 they give an error standard deviation at lead
 time 12 of σ √12:
 
 | Preset | `sigma_generation` | `sigma_load` | `rho` | `phi` | Error std at lead 12 (generation / load) |
 |---|---|---|---|---|---|
 | `perfect` | 0 | 0 | 0 | 0 | 0 / 0 (true values) |
-| `standard` (provisional) | 0.07 | 0.03 | 0.5 | 0.8 | 24 % of r_τ / 10 % of the load |
-| `noisy` (provisional) | 0.15 | 0.08 | 0.7 | 0.9 | 52 % of r_τ / 28 % of the load |
+| `standard` | 0.07 | 0.03 | 0.5 | 0.8 | 24 % of r_τ / 10 % of the load |
+| `noisy` | 0.15 | 0.08 | 0.7 | 0.9 | 52 % of r_τ / 28 % of the load |
 
 Custom parameters:
 
@@ -378,7 +378,7 @@ of each episode under `smartcer/`.
 ### Oracle files
 
 The MILP outputs are read by `smartcer.oracle.read_oracle`, the only function that knows their
-format. The format below is provisional. An oracle folder holds:
+format. An oracle folder holds:
 
 | File | Columns | Content |
 |---|---|---|

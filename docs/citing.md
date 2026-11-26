@@ -46,7 +46,6 @@ SmartCer is released under the MIT License. See the
 
 ## Acknowledgements
 
-```{admonition} TODO(verify)
-Developed within the SUMMA project, funded by Fondo per la Repubblica Digitale (crescerAI).
-Wording and funding details to be verified before publication.
-```
+Developed within the SUMMA project (SUstainable Microgrid MAnagement with federated reinforcement
+learning, project code 444, ID 2023-CRE-00297), an initiative selected by Fondo per la Repubblica
+Digitale – Impresa Sociale under the “crescerAI” call, with the support of Google.org.

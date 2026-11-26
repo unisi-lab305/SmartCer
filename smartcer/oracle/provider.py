@@ -2,7 +2,7 @@
 MILP oracle: the optimal battery trajectories of a MILP ([S22]), for the critic.
 
 Oracle data enter only `info['privileged']` of `SmartCerEnv` and the `ReplayController`.
-An oracle folder holds (provisional format; `read_oracle` is the only function that knows it):
+An oracle folder holds (`read_oracle` is the only function that knows the format):
 
 - `trajectory.csv`: one row per step and battery node, columns `datetime, node_id, p_cha_kw,
   p_dis_kw, soc_kwh`. `datetime` is the start of the step, without time zone, as in the scenario

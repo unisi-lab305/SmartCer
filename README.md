@@ -8,9 +8,6 @@ and the energy they take from it. A reinforcement learning agent controls the ba
 maximise the social welfare of the community: sales, minus purchases and storage costs, plus the
 incentive.
 
-> **Beta.** Version 1.0.1 is a beta release: validation against a MILP reference trajectory is in
-> progress. The MILP oracle file format and the forecast error presets are provisional.
-
 **Documentation: <https://unisi-lab305.github.io/SmartCer/>**
 
 ## Installation
